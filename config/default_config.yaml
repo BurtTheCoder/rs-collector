@@ -1,0 +1,118 @@
+version: '1.0'
+description: Custom DFIR triage configuration for malware investigation
+artifacts:
+- name: MFT
+  artifact_type: MFT
+  source_path: \\?\C:\$MFT
+  destination_name: MFT
+  description: Master File Table
+  required: true
+  metadata: {}
+- name: SYSTEM
+  artifact_type: Registry
+  source_path: \\?\C:\Windows\System32\config\SYSTEM
+  destination_name: SYSTEM
+  description: System registry hive
+  required: true
+  metadata: {}
+- name: SOFTWARE
+  artifact_type: Registry
+  source_path: \\?\C:\Windows\System32\config\SOFTWARE
+  destination_name: SOFTWARE
+  description: Software registry hive
+  required: true
+  metadata: {}
+- name: SECURITY
+  artifact_type: Registry
+  source_path: \\?\C:\Windows\System32\config\SECURITY
+  destination_name: SECURITY
+  description: Security registry hive
+  required: true
+  metadata: {}
+- name: SAM
+  artifact_type: Registry
+  source_path: \\?\C:\Windows\System32\config\SAM
+  destination_name: SAM
+  description: SAM registry hive
+  required: true
+  metadata: {}
+- name: NTUSER.DAT
+  artifact_type: Registry
+  source_path: \\?\%USERPROFILE%\NTUSER.DAT
+  destination_name: NTUSER.DAT
+  description: User registry hive
+  required: false
+  metadata: {}
+- name: System.evtx
+  artifact_type: EventLog
+  source_path: \\?\C:\Windows\System32\winevt\Logs\System.evtx
+  destination_name: System.evtx
+  description: System event log
+  required: true
+  metadata: {}
+- name: Security.evtx
+  artifact_type: EventLog
+  source_path: \\?\C:\Windows\System32\winevt\Logs\Security.evtx
+  destination_name: Security.evtx
+  description: Security event log
+  required: true
+  metadata: {}
+- name: Application.evtx
+  artifact_type: EventLog
+  source_path: \\?\C:\Windows\System32\winevt\Logs\Application.evtx
+  destination_name: Application.evtx
+  description: Application event log
+  required: true
+  metadata: {}
+- name: PowerShell.evtx
+  artifact_type: EventLog
+  source_path: \\?\C:\Windows\System32\winevt\Logs\Microsoft-Windows-PowerShell%4Operational.evtx
+  destination_name: PowerShell-Operational.evtx
+  description: PowerShell event log
+  required: false
+  metadata: {}
+- name: Sysmon.evtx
+  artifact_type: EventLog
+  source_path: \\?\C:\Windows\System32\winevt\Logs\Microsoft-Windows-Sysmon%4Operational.evtx
+  destination_name: Sysmon-Operational.evtx
+  description: Sysmon event log
+  required: false
+  metadata: {}
+- name: Memory Dump
+  artifact_type: Memory
+  source_path: \\?\C:\pagefile.sys
+  destination_name: pagefile.sys
+  description: Windows pagefile containing memory pages
+  required: false
+  metadata:
+    format: pagefile
+    acquisition_method: raw
+- name: Hibernation File
+  artifact_type: Memory
+  source_path: \\?\C:\hiberfil.sys
+  destination_name: hiberfil.sys
+  description: Windows hibernation file
+  required: false
+  metadata:
+    format: hibernation
+    compression: yes
+- name: Prefetch Files
+  artifact_type: Custom
+  source_path: \\?\C:\Windows\Prefetch\
+  destination_name: Prefetch
+  description: Windows prefetch files containing execution history
+  required: false
+  metadata:
+    type: prefetch
+- name: USN Journal
+  artifact_type: MFT
+  source_path: \\?\C:\$Extend\$UsnJrnl:$J
+  destination_name: UsnJrnl
+  description: NTFS USN Change Journal
+  required: false
+  metadata:
+    format: usnjrnl
+global_options:
+  collection_tag: malware-investigation
+  max_file_size: 4GB
+  compression_level: high

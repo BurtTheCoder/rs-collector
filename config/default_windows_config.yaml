@@ -1,0 +1,150 @@
+version: "1.0"
+description: "Default Windows DFIR triage configuration"
+artifacts:
+  - name: "MFT"
+    artifact_type: 
+      Windows: MFT
+    source_path: "\\\\?\\C:\\$MFT"
+    destination_name: "MFT"
+    description: "Master File Table"
+    required: true
+    metadata:
+      category: "filesystem"
+      priority: "high"
+  
+  - name: "SYSTEM"
+    artifact_type:
+      Windows: Registry
+    source_path: "\\\\?\\C:\\Windows\\System32\\config\\SYSTEM"
+    destination_name: "SYSTEM"
+    description: "System registry hive"
+    required: true
+    metadata:
+      category: "registry"
+      priority: "high"
+  
+  - name: "SOFTWARE"
+    artifact_type:
+      Windows: Registry
+    source_path: "\\\\?\\C:\\Windows\\System32\\config\\SOFTWARE"
+    destination_name: "SOFTWARE"
+    description: "Software registry hive"
+    required: true
+    metadata:
+      category: "registry"
+      priority: "high"
+  
+  - name: "SECURITY"
+    artifact_type:
+      Windows: Registry
+    source_path: "\\\\?\\C:\\Windows\\System32\\config\\SECURITY"
+    destination_name: "SECURITY"
+    description: "Security registry hive"
+    required: true
+    metadata:
+      category: "registry"
+      priority: "high"
+  
+  - name: "SAM"
+    artifact_type:
+      Windows: Registry
+    source_path: "\\\\?\\C:\\Windows\\System32\\config\\SAM"
+    destination_name: "SAM"
+    description: "SAM registry hive"
+    required: true
+    metadata:
+      category: "registry"
+      priority: "high"
+  
+  - name: "NTUSER.DAT"
+    artifact_type:
+      Windows: Registry
+    source_path: "\\\\?\\%USERPROFILE%\\NTUSER.DAT"
+    destination_name: "NTUSER.DAT"
+    description: "User registry hive"
+    required: false
+    metadata:
+      category: "registry"
+      priority: "medium"
+  
+  - name: "System.evtx"
+    artifact_type:
+      Windows: EventLog
+    source_path: "\\\\?\\C:\\Windows\\System32\\winevt\\Logs\\System.evtx"
+    destination_name: "System.evtx"
+    description: "System event log"
+    required: true
+    metadata:
+      category: "eventlog"
+      priority: "high"
+  
+  - name: "Security.evtx"
+    artifact_type:
+      Windows: EventLog
+    source_path: "\\\\?\\C:\\Windows\\System32\\winevt\\Logs\\Security.evtx"
+    destination_name: "Security.evtx"
+    description: "Security event log"
+    required: true
+    metadata:
+      category: "eventlog"
+      priority: "high"
+  
+  - name: "Application.evtx"
+    artifact_type:
+      Windows: EventLog
+    source_path: "\\\\?\\C:\\Windows\\System32\\winevt\\Logs\\Application.evtx"
+    destination_name: "Application.evtx"
+    description: "Application event log"
+    required: true
+    metadata:
+      category: "eventlog"
+      priority: "high"
+  
+  - name: "PowerShell.evtx"
+    artifact_type:
+      Windows: EventLog
+    source_path: "\\\\?\\C:\\Windows\\System32\\winevt\\Logs\\Microsoft-Windows-PowerShell%4Operational.evtx"
+    destination_name: "PowerShell-Operational.evtx"
+    description: "PowerShell event log"
+    required: false
+    metadata:
+      category: "eventlog"
+      priority: "medium"
+  
+  - name: "Sysmon.evtx"
+    artifact_type:
+      Windows: EventLog
+    source_path: "\\\\?\\C:\\Windows\\System32\\winevt\\Logs\\Microsoft-Windows-Sysmon%4Operational.evtx"
+    destination_name: "Sysmon-Operational.evtx"
+    description: "Sysmon event log"
+    required: false
+    metadata:
+      category: "eventlog"
+      priority: "medium"
+  
+  - name: "Prefetch"
+    artifact_type:
+      Windows: Prefetch
+    source_path: "\\\\?\\C:\\Windows\\Prefetch"
+    destination_name: "Prefetch"
+    description: "Prefetch files"
+    required: false
+    metadata:
+      category: "execution"
+      priority: "medium"
+  
+  - name: "USN Journal"
+    artifact_type:
+      Windows: USNJournal
+    source_path: "\\\\?\\C:\\$Extend\\$UsnJrnl:$J"
+    destination_name: "UsnJrnl"
+    description: "USN Journal"
+    required: false
+    metadata:
+      category: "filesystem"
+      priority: "medium"
+
+global_options:
+  skip_locked_files: "true"
+  max_file_size_mb: "2048"
+  compress_artifacts: "true"

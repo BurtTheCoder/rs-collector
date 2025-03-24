@@ -1,0 +1,89 @@
+version: '1.0'
+description: Default macOS DFIR triage configuration
+artifacts:
+- name: system.log
+  artifact_type:
+    MacOS: UnifiedLogs
+  source_path: /var/log/system.log
+  destination_name: system.log
+  description: System logs
+  required: true
+  metadata: {}
+- name: unified_logs
+  artifact_type:
+    MacOS: UnifiedLogs
+  source_path: /private/var/db/diagnostics
+  destination_name: unified_logs
+  description: Unified logging system
+  required: false
+  metadata: {}
+- name: fseventsd
+  artifact_type:
+    MacOS: FSEvents
+  source_path: /System/Volumes/Data/.fseventsd
+  destination_name: fseventsd
+  description: File system events
+  required: false
+  metadata: {}
+- name: quarantine
+  artifact_type:
+    MacOS: Quarantine
+  source_path: $HOME/Library/Preferences/com.apple.LaunchServices.QuarantineEventsV2
+  destination_name: QuarantineEventsV2
+  description: Quarantine database
+  required: false
+  metadata: {}
+- name: knowledgec
+  artifact_type:
+    MacOS: KnowledgeC
+  source_path: $HOME/Library/Application Support/Knowledge/knowledgeC.db
+  destination_name: knowledgeC.db
+  description: User activity database
+  required: false
+  metadata: {}
+- name: launch_agents
+  artifact_type:
+    MacOS: LaunchAgents
+  source_path: /Library/LaunchAgents
+  destination_name: LaunchAgents
+  description: System launch agents
+  required: false
+  metadata: {}
+- name: user_launch_agents
+  artifact_type:
+    MacOS: LaunchAgents
+  source_path: $HOME/Library/LaunchAgents
+  destination_name: UserLaunchAgents
+  description: User launch agents
+  required: false
+  metadata: {}
+- name: launch_daemons
+  artifact_type:
+    MacOS: LaunchDaemons
+  source_path: /Library/LaunchDaemons
+  destination_name: LaunchDaemons
+  description: System launch daemons
+  required: false
+  metadata: {}
+- name: spotlight_store
+  artifact_type:
+    MacOS: Spotlight
+  source_path: /.Spotlight-V100
+  destination_name: Spotlight
+  description: Spotlight metadata
+  required: false
+  metadata: {}
+- name: system_plists
+  artifact_type:
+    MacOS: Plist
+  source_path: /Library/Preferences
+  destination_name: SystemPreferences
+  description: System preference plists
+  required: false
+  metadata: {}
+global_options:
+  generate_bodyfile: "true"
+  bodyfile_calculate_hash: "false"  # Optional, disabled by default
+  bodyfile_hash_max_size_mb: "100"  # Skip files larger than this
+  bodyfile_skip_paths: "/proc,/sys,/dev"  # Paths to skip for hashing
+  bodyfile_use_iso8601: "true"  # Use ISO 8601 timestamps instead of Unix epoch
