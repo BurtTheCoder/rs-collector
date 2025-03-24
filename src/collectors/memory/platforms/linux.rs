@@ -21,6 +21,93 @@ pub struct LinuxMemoryCollector {
     // No state needed for Linux implementation
 }
 
+// Regular methods outside of the trait implementation
+impl LinuxMemoryCollector {
+    /// Internal implementation of memory reading
+    fn read_memory_internal(&self, pid: u32, address: u64, size: usize) -> Result<Vec<u8>> {
+        let mem_path = format!("/proc/{}/mem", pid);
+        
+        // Open the process memory file with improved error handling
+        let mut file = match File::open(&mem_path) {
+            Ok(f) => f,
+            Err(e) if e.kind() == io::ErrorKind::PermissionDenied => {
+                bail!("Permission denied when accessing process memory for pid {}. Run as root or adjust ptrace_scope.", pid);
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                bail!("Process {} no longer exists or is not accessible", pid);
+            }
+            Err(e) => {
+                bail!("Failed to open memory file for process {}: {}", pid, e);
+            }
+        };
+        
+        // Seek to the specified address
+        if let Err(e) = file.seek(SeekFrom::Start(address)) {
+            bail!("Failed to seek to address {:x} for process {}: {}", address, pid, e);
+        }
+        
+        // Read the memory
+        let mut buffer = vec![0u8; size];
+        let bytes_read = match file.read(&mut buffer) {
+            Ok(n) => n,
+            Err(e) if e.kind() == io::ErrorKind::InvalidInput => {
+                // This can happen for special memory regions like vsyscall
+                debug!("Invalid memory region at {:x} for process {}: {}", address, pid, e);
+                return Ok(Vec::new());
+            }
+            Err(e) => {
+                bail!("Failed to read memory at address {:x} for process {}: {}", address, pid, e);
+            }
+        };
+        
+        // Resize buffer to actual bytes read
+        buffer.truncate(bytes_read);
+        
+        debug!("Read {} bytes from address {:x} for process {}", bytes_read, address, pid);
+        
+        Ok(buffer)
+    }
+    
+    /// Read large memory regions in chunks to avoid allocation issues
+    fn read_large_memory(&self, pid: u32, address: u64, size: usize) -> Result<Vec<u8>> {
+        const CHUNK_SIZE: usize = 1024 * 1024; // 1MB chunks
+        let mut result = Vec::with_capacity(size);
+        let mut failures = 0;
+        
+        debug!("Reading large memory region of {} bytes in chunks for process {}", size, pid);
+        
+        for chunk_offset in (0..size).step_by(CHUNK_SIZE) {
+            let chunk_size = std::cmp::min(CHUNK_SIZE, size - chunk_offset);
+            let chunk_addr = address + chunk_offset as u64;
+            
+            match self.read_memory_internal(pid, chunk_addr, chunk_size) {
+                Ok(data) => {
+                    result.extend(data);
+                }
+                Err(e) => {
+                    // Log partial failure but continue
+                    debug!("Failed to read memory chunk at {:x}: {}", chunk_addr, e);
+                    failures += 1;
+                    
+                    // If too many failures, abort
+                    if failures > 5 {
+                        warn!("Too many failures reading memory for process {}, aborting", pid);
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if result.is_empty() {
+            bail!("Failed to read any memory from address {:x} for process {}", address, pid);
+        }
+        
+        debug!("Read {} bytes total from large memory region for process {}", result.len(), pid);
+        
+        Ok(result)
+    }
+}
+
 impl MemoryCollectorImpl for LinuxMemoryCollector {
     fn new() -> Result<Self> {
         // Check if we have access to /proc
@@ -133,90 +220,6 @@ impl MemoryCollectorImpl for LinuxMemoryCollector {
         self.read_memory_internal(pid, address, size)
     }
     
-    /// Internal implementation of memory reading
-    fn read_memory_internal(&self, pid: u32, address: u64, size: usize) -> Result<Vec<u8>> {
-        let mem_path = format!("/proc/{}/mem", pid);
-        
-        // Open the process memory file with improved error handling
-        let mut file = match File::open(&mem_path) {
-            Ok(f) => f,
-            Err(e) if e.kind() == io::ErrorKind::PermissionDenied => {
-                bail!("Permission denied when accessing process memory for pid {}. Run as root or adjust ptrace_scope.", pid);
-            }
-            Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                bail!("Process {} no longer exists or is not accessible", pid);
-            }
-            Err(e) => {
-                bail!("Failed to open memory file for process {}: {}", pid, e);
-            }
-        };
-        
-        // Seek to the specified address
-        if let Err(e) = file.seek(SeekFrom::Start(address)) {
-            bail!("Failed to seek to address {:x} for process {}: {}", address, pid, e);
-        }
-        
-        // Read the memory
-        let mut buffer = vec![0u8; size];
-        let bytes_read = match file.read(&mut buffer) {
-            Ok(n) => n,
-            Err(e) if e.kind() == io::ErrorKind::InvalidInput => {
-                // This can happen for special memory regions like vsyscall
-                debug!("Invalid memory region at {:x} for process {}: {}", address, pid, e);
-                return Ok(Vec::new());
-            }
-            Err(e) => {
-                bail!("Failed to read memory at address {:x} for process {}: {}", address, pid, e);
-            }
-        };
-        
-        // Resize buffer to actual bytes read
-        buffer.truncate(bytes_read);
-        
-        debug!("Read {} bytes from address {:x} for process {}", bytes_read, address, pid);
-        
-        Ok(buffer)
-    }
-    
-    /// Read large memory regions in chunks to avoid allocation issues
-    fn read_large_memory(&self, pid: u32, address: u64, size: usize) -> Result<Vec<u8>> {
-        const CHUNK_SIZE: usize = 1024 * 1024; // 1MB chunks
-        let mut result = Vec::with_capacity(size);
-        let mut failures = 0;
-        
-        debug!("Reading large memory region of {} bytes in chunks for process {}", size, pid);
-        
-        for chunk_offset in (0..size).step_by(CHUNK_SIZE) {
-            let chunk_size = std::cmp::min(CHUNK_SIZE, size - chunk_offset);
-            let chunk_addr = address + chunk_offset as u64;
-            
-            match self.read_memory_internal(pid, chunk_addr, chunk_size) {
-                Ok(data) => {
-                    result.extend(data);
-                }
-                Err(e) => {
-                    // Log partial failure but continue
-                    debug!("Failed to read memory chunk at {:x}: {}", chunk_addr, e);
-                    failures += 1;
-                    
-                    // If too many failures, abort
-                    if failures > 5 {
-                        warn!("Too many failures reading memory for process {}, aborting", pid);
-                        break;
-                    }
-                }
-            }
-        }
-        
-        if result.is_empty() {
-            bail!("Failed to read any memory from address {:x} for process {}", address, pid);
-        }
-        
-        debug!("Read {} bytes total from large memory region for process {}", result.len(), pid);
-        
-        Ok(result)
-    }
-    
     fn get_modules(&self, process: &ProcessInfo) -> Result<Vec<ModuleInfo>> {
         let pid = process.pid;
         let maps_path = format!("/proc/{}/maps", pid);
@@ -225,7 +228,7 @@ impl MemoryCollectorImpl for LinuxMemoryCollector {
         let maps_content = fs::read_to_string(&maps_path)
             .context(format!("Failed to read memory maps for process {}", pid))?;
         
-        let mut modules = HashMap::new();
+        let mut modules: HashMap<String, ModuleInfo> = HashMap::new();
         
         // Parse each line of the maps file to find modules
         for line in maps_content.lines() {

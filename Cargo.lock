@@ -1268,6 +1268,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "439ee305def115ba05938db6eb1644ff94165c5ab5e9420d1c1bcedbba909391"
 
 [[package]]
+name = "pretty-hex"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6fa0831dd7cc608c38a5e323422a0077678fa5744aa2be4ad91c4ece8eec8d5"
+
+[[package]]
 name = "proc-macro-error"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1445,7 +1451,7 @@ dependencies = [
 
 [[package]]
 name = "rust_collector"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -1465,6 +1471,7 @@ dependencies = [
  "mach-sys",
  "memprocfs",
  "num_cpus",
+ "pretty-hex",
  "rayon",
  "rusoto_core",
  "rusoto_credential",
@@ -1482,6 +1489,7 @@ dependencies = [
  "walkdir",
  "widestring",
  "winapi",
+ "yara-sys",
  "zip",
  "zstd 0.12.4",
 ]
@@ -2218,6 +2226,12 @@ name = "xml-rs"
 version = "0.8.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c5b940ebc25896e71dd073bad2dbaa2abfe97b0a391415e22ad1326d9c54e3c4"
+
+[[package]]
+name = "yara-sys"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "74d389488839e20796e40a6b34e0b4f6fd14fdbbfa149f2855bc66d8d40ceb4a"
 
 [[package]]
 name = "zeroize"

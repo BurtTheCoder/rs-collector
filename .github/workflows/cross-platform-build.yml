@@ -1,0 +1,228 @@
+name: Cross-Platform Build
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }} (${{ matrix.arch }}) with ${{ matrix.feature_name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false  # Continue with other builds if one fails
+      matrix:
+        include:
+          # ==== x86_64 BUILDS ====
+          
+          # Linux builds
+          - os: ubuntu
+            runner: ubuntu-latest
+            arch: x86_64
+            target: x86_64-unknown-linux-gnu
+            features: ""
+            feature_name: "standard"
+            dependencies: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+          
+          - os: ubuntu
+            runner: ubuntu-latest
+            arch: x86_64
+            target: x86_64-unknown-linux-gnu
+            features: "memory_collection,linux_memory"
+            feature_name: "memory"
+            dependencies: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+          
+          - os: ubuntu
+            runner: ubuntu-latest
+            arch: x86_64
+            target: x86_64-unknown-linux-gnu
+            features: "memory_collection,linux_memory,yara"
+            feature_name: "memory+yara"
+            dependencies: |
+              sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config libyara-dev
+          
+          # macOS builds
+          - os: macos
+            runner: macos-latest
+            arch: x86_64
+            target: x86_64-apple-darwin
+            features: ""
+            feature_name: "standard"
+            dependencies: brew install openssl pkg-config
+          
+          - os: macos
+            runner: macos-latest
+            arch: x86_64
+            target: x86_64-apple-darwin
+            features: "memory_collection,macos_memory"
+            feature_name: "memory"
+            dependencies: brew install openssl pkg-config
+          
+          # Windows builds
+          - os: windows
+            runner: windows-latest
+            arch: x86_64
+            target: x86_64-pc-windows-msvc
+            features: ""
+            feature_name: "standard"
+            dependencies: ""
+          
+          - os: windows
+            runner: windows-latest
+            arch: x86_64
+            target: x86_64-pc-windows-msvc
+            features: "memory_collection,windows_memory"
+            feature_name: "memory"
+            windows_memory_setup: true
+            dependencies_script: |
+              # Install Visual C++ Build Tools & Windows SDK components
+              choco install visualstudio2019buildtools --package-parameters "--add Microsoft.VisualStudio.Component.VC.Tools.x86.x64"
+              choco install windows-sdk-10-version-2004-all
+              
+              # Set environment variables for MemProcFS
+              echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+              
+              # Install any vcpkg dependencies if needed
+              vcpkg install openssl:x64-windows
+
+          # ==== ARM64 BUILDS ====
+          
+          # Linux ARM64
+          - os: ubuntu
+            runner: ubuntu-latest-arm64
+            arch: arm64
+            target: aarch64-unknown-linux-gnu
+            features: ""
+            feature_name: "standard"
+            dependencies: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+            native: true
+          
+          - os: ubuntu
+            runner: ubuntu-latest-arm64
+            arch: arm64
+            target: aarch64-unknown-linux-gnu
+            features: "memory_collection,linux_memory"
+            feature_name: "memory"
+            dependencies: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+            native: true
+          
+          # macOS ARM64 (Apple Silicon) 
+          - os: macos
+            runner: macos-14
+            arch: arm64
+            target: aarch64-apple-darwin
+            features: ""
+            feature_name: "standard"
+            dependencies: brew install openssl pkg-config
+            native: true
+          
+          - os: macos
+            runner: macos-14
+            arch: arm64
+            target: aarch64-apple-darwin
+            features: "memory_collection,macos_memory"
+            feature_name: "memory"
+            dependencies: brew install openssl pkg-config
+            native: true
+          
+          # Windows ARM64 (cross-compiled)
+          - os: windows
+            runner: windows-latest
+            arch: arm64
+            target: aarch64-pc-windows-msvc
+            features: ""
+            feature_name: "standard"
+            dependencies: ""
+            native: false
+            setup_cross: |
+              rustup target add aarch64-pc-windows-msvc
+
+          # ==== EMBEDDED CONFIG VARIANTS ====
+          
+          # Linux with embedded config
+          - os: ubuntu
+            runner: ubuntu-latest
+            arch: x86_64
+            target: x86_64-unknown-linux-gnu
+            features: "embed_config"
+            feature_name: "embedded-config"
+            dependencies: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+
+    steps:
+    - uses: actions/checkout@v4
+      
+    # Set up Rust toolchain
+    - name: Set up Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        target: ${{ matrix.target }}
+        override: true
+        
+    # Setup cross-compilation if needed
+    - name: Set up cross-compilation
+      if: matrix.setup_cross != '' && matrix.native != true
+      run: ${{ matrix.setup_cross }}
+
+    # Install platform-specific dependencies
+    - name: Install dependencies
+      if: matrix.dependencies != ''
+      run: ${{ matrix.dependencies }}
+
+    # Windows-specific setup for memory collection
+    - name: Windows memory collection setup
+      if: matrix.os == 'windows' && matrix.windows_memory_setup == true
+      shell: pwsh
+      run: ${{ matrix.dependencies_script }}
+
+    # Cache dependencies for faster builds
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.feature_name }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.feature_name }}-cargo-
+          ${{ matrix.os }}-${{ matrix.arch }}-cargo-
+
+    # Build with the specified features (debug build for testing)
+    - name: Debug build
+      run: cargo build --verbose --target ${{ matrix.target }} ${{ matrix.features != '' && format('--features={0}', matrix.features) || '' }}
+      
+    # Run tests (for non-cross-compiled builds)
+    - name: Test
+      if: matrix.native != false
+      run: cargo test --verbose --target ${{ matrix.target }} ${{ matrix.features != '' && format('--features={0}', matrix.features) || '' }}
+      
+    # Build release version
+    - name: Release build
+      run: cargo build --release --verbose --target ${{ matrix.target }} ${{ matrix.features != '' && format('--features={0}', matrix.features) || '' }}
+      
+    # Upload artifacts for release builds
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: rust_collector-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.feature_name }}
+        path: |
+          target/${{ matrix.target }}/release/rust_collector*
+          !target/${{ matrix.target }}/release/rust_collector.d
+          !target/${{ matrix.target }}/release/rust_collector.pdb
+          
+    # Optional: Create tagged release when tag is pushed
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: |
+          target/${{ matrix.target }}/release/rust_collector*
+          !target/${{ matrix.target }}/release/rust_collector.d
+          !target/${{ matrix.target }}/release/rust_collector.pdb
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
