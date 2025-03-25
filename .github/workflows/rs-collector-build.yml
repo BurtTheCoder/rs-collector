@@ -273,9 +273,10 @@ jobs:
       run: |
         mkdir -p config/
         echo "Using OS-specific config for ${{ matrix.os_normalized }}"
-        cp config/default_${{ matrix.os_normalized }}_config.yaml config/default_config.yaml
-        # Also copy to OS-specific location for build.rs to find
-        cp config/default_${{ matrix.os_normalized }}_config.yaml config/default_${{ matrix.os_normalized }}_config.yaml
+        # Copy to default_config.yaml for backward compatibility
+        cp -f config/default_${{ matrix.os_normalized }}_config.yaml config/default_config.yaml
+        # Make sure the OS-specific config exists (using cat instead of cp to avoid copying to itself)
+        cat config/default_${{ matrix.os_normalized }}_config.yaml > /dev/null
     
     # Set environment variable for build.rs to use specific config
     - name: Set config environment variable
