@@ -59,16 +59,15 @@ fn main() -> Result<()> {
                 // Determine target OS
                 let target_os = build_opts.target_os.as_ref().map(|os| os.to_string());
                 
-                let script_path = build::generate_build_script(
+                // Build binary directly using the new approach
+                let output_file = build::build_binary_with_config(
                     &build_opts.config, 
                     build_opts.output.as_deref(),
                     build_opts.name.as_deref(),
                     target_os.as_deref()
                 )?;
                 
-                // Execute the build script
-                build::execute_build_script(&script_path)?;
-                
+                info!("Standalone binary created at: {}", output_file.display());
                 return Ok(());
             }
         }

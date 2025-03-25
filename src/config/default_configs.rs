@@ -18,6 +18,7 @@ impl CollectionConfig {
                     description: Some("Master File Table".into()),
                     required: true,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 // Registry hives
                 Artifact {
@@ -28,6 +29,7 @@ impl CollectionConfig {
                     description: Some("System registry hive".into()),
                     required: true,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 Artifact {
                     name: "SOFTWARE".into(),
@@ -37,6 +39,7 @@ impl CollectionConfig {
                     description: Some("Software registry hive".into()),
                     required: true,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 Artifact {
                     name: "SECURITY".into(),
@@ -46,6 +49,7 @@ impl CollectionConfig {
                     description: Some("Security registry hive".into()),
                     required: true,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 Artifact {
                     name: "SAM".into(),
@@ -55,6 +59,7 @@ impl CollectionConfig {
                     description: Some("SAM registry hive".into()),
                     required: true,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 Artifact {
                     name: "NTUSER.DAT".into(),
@@ -64,6 +69,7 @@ impl CollectionConfig {
                     description: Some("User registry hive".into()),
                     required: false,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 // Event logs
                 Artifact {
@@ -74,6 +80,7 @@ impl CollectionConfig {
                     description: Some("System event log".into()),
                     required: true,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 Artifact {
                     name: "Security.evtx".into(),
@@ -83,6 +90,7 @@ impl CollectionConfig {
                     description: Some("Security event log".into()),
                     required: true,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 Artifact {
                     name: "Application.evtx".into(),
@@ -92,6 +100,7 @@ impl CollectionConfig {
                     description: Some("Application event log".into()),
                     required: true,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 Artifact {
                     name: "PowerShell.evtx".into(),
@@ -101,6 +110,7 @@ impl CollectionConfig {
                     description: Some("PowerShell event log".into()),
                     required: false,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 Artifact {
                     name: "Sysmon.evtx".into(),
@@ -110,6 +120,7 @@ impl CollectionConfig {
                     description: Some("Sysmon event log".into()),
                     required: false,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 // Prefetch files
                 Artifact {
@@ -120,6 +131,7 @@ impl CollectionConfig {
                     description: Some("Prefetch files".into()),
                     required: false,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 // USN Journal
                 Artifact {
@@ -130,6 +142,7 @@ impl CollectionConfig {
                     description: Some("USN Journal".into()),
                     required: false,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
             ],
             global_options: HashMap::new(),
@@ -151,6 +164,7 @@ impl CollectionConfig {
                     description: Some("System logs".into()),
                     required: true,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 Artifact {
                     name: "auth.log".into(),
@@ -160,6 +174,7 @@ impl CollectionConfig {
                     description: Some("Authentication logs".into()),
                     required: true,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 // Journal logs
                 Artifact {
@@ -170,6 +185,7 @@ impl CollectionConfig {
                     description: Some("Systemd journal logs".into()),
                     required: false,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 // Proc filesystem
                 Artifact {
@@ -180,6 +196,7 @@ impl CollectionConfig {
                     description: Some("Kernel command line".into()),
                     required: false,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 Artifact {
                     name: "proc-modules".into(),
@@ -189,6 +206,7 @@ impl CollectionConfig {
                     description: Some("Loaded kernel modules".into()),
                     required: false,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 // Audit logs
                 Artifact {
@@ -199,6 +217,7 @@ impl CollectionConfig {
                     description: Some("Audit logs".into()),
                     required: false,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 // Cron
                 Artifact {
@@ -209,6 +228,7 @@ impl CollectionConfig {
                     description: Some("System crontab".into()),
                     required: false,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 Artifact {
                     name: "cron.d".into(),
@@ -218,6 +238,7 @@ impl CollectionConfig {
                     description: Some("System cron jobs".into()),
                     required: false,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 // Bash history
                 Artifact {
@@ -228,6 +249,7 @@ impl CollectionConfig {
                     description: Some("Bash command history".into()),
                     required: false,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 // Package management
                 Artifact {
@@ -238,6 +260,7 @@ impl CollectionConfig {
                     description: Some("Package installation logs".into()),
                     required: false,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 // Systemd
                 Artifact {
@@ -248,6 +271,7 @@ impl CollectionConfig {
                     description: Some("Systemd unit files".into()),
                     required: false,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
             ],
             global_options: HashMap::new(),
@@ -269,6 +293,7 @@ impl CollectionConfig {
                     description: Some("System logs".into()),
                     required: true,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 // Unified logs
                 Artifact {
@@ -279,6 +304,7 @@ impl CollectionConfig {
                     description: Some("Unified logging system".into()),
                     required: false,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 // FSEvents
                 Artifact {
@@ -289,6 +315,7 @@ impl CollectionConfig {
                     description: Some("File system events".into()),
                     required: false,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 // Quarantine database
                 Artifact {
@@ -299,6 +326,7 @@ impl CollectionConfig {
                     description: Some("Quarantine database".into()),
                     required: false,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 // KnowledgeC database
                 Artifact {
@@ -309,6 +337,7 @@ impl CollectionConfig {
                     description: Some("User activity database".into()),
                     required: false,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 // Launch Agents
                 Artifact {
@@ -319,6 +348,7 @@ impl CollectionConfig {
                     description: Some("System launch agents".into()),
                     required: false,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 Artifact {
                     name: "user_launch_agents".into(),
@@ -328,6 +358,7 @@ impl CollectionConfig {
                     description: Some("User launch agents".into()),
                     required: false,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 // Launch Daemons
                 Artifact {
@@ -338,6 +369,7 @@ impl CollectionConfig {
                     description: Some("System launch daemons".into()),
                     required: false,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 // Spotlight
                 Artifact {
@@ -348,6 +380,7 @@ impl CollectionConfig {
                     description: Some("Spotlight metadata".into()),
                     required: false,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 // Plists
                 Artifact {
@@ -358,6 +391,7 @@ impl CollectionConfig {
                     description: Some("System preference plists".into()),
                     required: false,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
             ],
             global_options: HashMap::new(),
@@ -379,6 +413,7 @@ impl CollectionConfig {
                     description: Some("System hostname".into()),
                     required: false,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
                 // Basic logs
                 Artifact {
@@ -389,6 +424,7 @@ impl CollectionConfig {
                     description: Some("System logs".into()),
                     required: false,
                     metadata: HashMap::new(),
+                    regex: None,
                 },
             ],
             global_options: HashMap::new(),

@@ -8,6 +8,7 @@ use serde::{Serialize, Deserialize};
 
 use crate::config::artifact_types::ArtifactType;
 use crate::config::env_vars::{parse_windows_env_vars, parse_unix_env_vars, normalize_path_for_os};
+use crate::config::regex_config::RegexConfig;
 
 // Include default config at compile time
 #[cfg(feature = "embed_config")]
@@ -26,6 +27,8 @@ pub struct Artifact {
     pub required: bool,
     #[serde(default)]
     pub metadata: HashMap<String, String>,
+    #[serde(default)]
+    pub regex: Option<RegexConfig>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

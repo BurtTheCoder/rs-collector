@@ -55,6 +55,7 @@ zstd = "0.12"
 async-trait = "0.1"
 libc = "0.2"
 sysinfo = "0.29.10"  # For volatile data collection
+regex = "1.9.5"      # For regex-based artifact collection
 memprocfs = { version = "5.14", optional = true }  # For process memory collection
 mach-sys = { version = "0.5", optional = true }    # For macOS memory collection (legacy)
 pretty-hex = { version = "0.3.0", optional = true } # For memory dump formatting

@@ -25,7 +25,95 @@ artifacts:
       priority: "high"
   
   # More artifacts...
+  
+  # Regex-based artifact collection
+  - name: "All Log Files"
+    artifact_type:
+      FileSystem: Logs
+    source_path: "/var/log"
+    destination_name: "logs"
+    description: "All system log files"
+    required: false
+    regex:
+      enabled: true
+      recursive: true
+      include_pattern: ".*\\.log$"
+      exclude_pattern: ".*\\.gz$"
+      max_depth: 2
 ```
+
+## Regex-Based Artifact Collection
+
+The Rust Collector supports regex-based pattern matching for artifact collection. This allows you to collect multiple files that match specific patterns, rather than having to specify each file individually.
+
+### Regex Configuration
+
+To use regex-based collection, add a `regex` section to your artifact configuration:
+
+```yaml
+regex:
+  enabled: true                # Enable regex matching for this artifact
+  recursive: true              # Recursively search directories
+  include_pattern: ".*\\.log$" # Regex pattern for files to include
+  exclude_pattern: ".*\\.gz$"  # Regex pattern for files to exclude (optional)
+  max_depth: 2                 # Maximum directory depth for recursive searches (optional)
+```
+
+### Regex Pattern Syntax
+
+The regex patterns use Rust's regex syntax, which is similar to Perl-compatible regular expressions (PCRE). Some common patterns:
+
+- `.*\\.log$` - Match files ending with .log
+- `.*\\.conf$` - Match files ending with .conf
+- `.*/(access|error)\\.log$` - Match files named access.log or error.log
+- `.*/.bash_history$` - Match .bash_history files in any directory
+
+### Examples
+
+```yaml
+# Collect all log files, excluding compressed ones
+- name: "All Log Files"
+  artifact_type:
+    FileSystem: Logs
+  source_path: "/var/log"
+  destination_name: "logs"
+  description: "All system log files"
+  required: false
+  regex:
+    enabled: true
+    recursive: true
+    include_pattern: ".*\\.log$"
+    exclude_pattern: ".*\\.gz$"
+    max_depth: 2
+
+# Collect all Windows event logs
+- name: "Windows Event Logs"
+  artifact_type:
+    Windows: EventLog
+  source_path: "C:\\Windows\\System32\\winevt\\Logs"
+  destination_name: "EventLogs"
+  description: "Windows event logs"
+  required: false
+  regex:
+    enabled: true
+    recursive: false
+    include_pattern: ".*\\.evtx$"
+
+# Collect all user bash histories
+- name: "User Bash Histories"
+  artifact_type:
+    Linux: Bash
+  source_path: "/home"
+  destination_name: "bash_histories"
+  description: "User bash command histories"
+  required: false
+  regex:
+    enabled: true
+    recursive: false
+    include_pattern: ".*/.bash_history$"
+```
+
+See the `examples/regex_config.yaml` file for more examples.
 
 ## Artifact Types
 

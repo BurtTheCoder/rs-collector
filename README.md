@@ -18,6 +18,7 @@ A cross-platform DFIR (Digital Forensics and Incident Response) triage collectio
   - YARA rule scanning for malware detection
   - Targeted memory region dumping
 - Configurable via YAML files or embedded configuration
+- Regex pattern matching for flexible artifact collection
 - Bodyfile generation for forensic timeline analysis (Linux and macOS)
 - OS-specific artifact types:
   - **Windows**: MFT, Registry hives, Event logs, Prefetch files, USN Journal
@@ -290,7 +291,35 @@ artifacts:
     required: false
 ```
 
-See the `config` directory for more configuration examples.
+### Regex-Based Artifact Collection
+
+The Rust Collector supports regex-based pattern matching for artifact collection. This allows you to collect multiple files that match specific patterns, rather than having to specify each file individually:
+
+```yaml
+# Collect all log files, excluding compressed ones
+- name: "All Log Files"
+  artifact_type:
+    FileSystem: Logs
+  source_path: "/var/log"
+  destination_name: "logs"
+  description: "All system log files"
+  required: false
+  regex:
+    enabled: true
+    recursive: true
+    include_pattern: ".*\\.log$"
+    exclude_pattern: ".*\\.gz$"
+    max_depth: 2
+```
+
+The regex configuration supports:
+- `enabled`: Enable regex matching for this artifact
+- `recursive`: Recursively search directories
+- `include_pattern`: Regex pattern for files to include
+- `exclude_pattern`: Regex pattern for files to exclude (optional)
+- `max_depth`: Maximum directory depth for recursive searches (optional)
+
+See the `config` directory and `examples/regex_config.yaml` for more configuration examples.
 
 ## Advanced Features
 
@@ -500,6 +529,8 @@ The bodyfile can be used with tools like mactime for timeline analysis, helping 
 
 ## Building from Source
 
+### Basic Build
+
 ```bash
 # Standard build
 cargo build --release
@@ -512,6 +543,144 @@ cargo build --release --target x86_64-pc-windows-gnu
 cargo build --release --target x86_64-unknown-linux-gnu
 cargo build --release --target x86_64-apple-darwin
 ```
+
+### Building with All Features
+
+To build with all available features enabled:
+
+```bash
+cargo build --release --features="embed_config,memory_collection,yara"
+```
+
+This will include:
+- `embed_config`: For embedding configuration into the binary
+- `memory_collection`: For process memory collection and analysis
+- `yara`: For YARA pattern scanning in memory
+
+#### Dependencies for Full Build
+
+Building with all features requires:
+
+1. **YARA Libraries**: Required for the `yara` feature
+   - **Ubuntu/Debian**: `apt install libyara-dev`
+   - **macOS**: `brew install yara`
+   - **Windows**: Download from [VirusTotal/yara GitHub](https://github.com/VirusTotal/yara/releases)
+
+2. **MemProcFS Requirements**: For memory collection across platforms
+   - Required for all operating systems when using `memory_collection`
+   - See [MemProcFS documentation](https://github.com/ufrisk/MemProcFS) for platform-specific setup
+
+#### Feature Combinations
+
+You can also build with specific feature combinations:
+
+```bash
+# Just memory collection without YARA
+cargo build --release --features="memory_collection"
+
+# Embedded config with memory collection
+cargo build --release --features="embed_config,memory_collection"
+
+# Use the full toolkit with embedded configuration
+./rust_collector build -c my_config.yaml -n "full_featured_collector" --features="memory_collection,yara"
+```
+
+#### Notes
+
+- The resulting binary will be larger than the standard build
+- Memory collection features require elevated privileges at runtime
+- YARA scanning has additional runtime dependencies
+
+### Enhanced Build System
+
+RS-Collector includes an enhanced build system that automatically handles OS-specific configurations:
+
+#### OS-Specific Configuration Handling
+
+When building with the `embed_config` feature, the build system:
+
+1. Automatically detects the target OS (Windows, Linux, macOS)
+2. Embeds the appropriate OS-specific configuration file
+3. Provides fallback mechanisms if the OS-specific config isn't available
+
+```bash
+# Build with OS-specific config for the current platform
+cargo build --release --features="embed_config"
+
+# Cross-compile with OS-specific config
+cargo build --release --features="embed_config" --target x86_64-pc-windows-gnu
+```
+
+#### Using the Build Command
+
+The `build` command provides a convenient way to create standalone binaries with embedded configurations:
+
+```bash
+# Build for current OS with specified config
+./rust_collector build -c my_config.yaml -n "custom_collector"
+
+# Build for specific OS
+./rust_collector build -c windows_config.yaml --target-os windows -n "windows_collector"
+./rust_collector build -c linux_config.yaml --target-os linux -n "linux_collector"
+./rust_collector build -c macos_config.yaml --target-os macos -n "macos_collector"
+```
+
+#### CI/CD Integration
+
+The project includes a comprehensive GitHub Actions workflow for automated builds across all supported platforms:
+
+```yaml
+name: RS-Collector Build
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          # Standard builds for each platform
+          - os: ubuntu
+            arch: x86_64
+            os_normalized: linux
+            target: x86_64-unknown-linux-gnu
+            
+          - os: macos
+            arch: x86_64
+            os_normalized: macos
+            target: x86_64-apple-darwin
+            
+          - os: windows
+            arch: x86_64
+            os_normalized: windows
+            target: x86_64-pc-windows-msvc
+            
+          # ARM64 builds
+          - os: ubuntu
+            arch: arm64
+            target: aarch64-unknown-linux-gnu
+            
+          - os: macos
+            arch: arm64
+            target: aarch64-apple-darwin
+            
+          # Builds with embedded configs
+          - os: ubuntu
+            features: "embed_config"
+            use_config_embedding: true
+            
+          # Builds using the build command
+          - os: ubuntu
+            use_build_command: true
+```
+
+The workflow handles:
+
+1. **Multiple Architectures**: x86_64 and ARM64 builds
+2. **Feature Combinations**: Standard, memory collection, YARA scanning
+3. **OS-Specific Configurations**: Automatically embeds the correct config for each OS
+4. **Cross-Compilation**: Builds for different target platforms
+5. **Artifact Management**: Uploads build artifacts for each configuration
+
+This ensures consistent builds across all platforms with proper OS-specific configuration handling.
 
 ## Deployment Options
 

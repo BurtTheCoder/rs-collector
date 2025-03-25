@@ -1,4 +1,4 @@
-name: Cross-Platform Build
+name: RS-Collector Build
 
 on:
   push:
@@ -11,18 +11,19 @@ env:
 
 jobs:
   build:
-    name: Build on ${{ matrix.os }} (${{ matrix.arch }}) with ${{ matrix.feature_name }}
+    name: Build ${{ matrix.os }}-${{ matrix.arch }} (${{ matrix.feature_name }})
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false  # Continue with other builds if one fails
       matrix:
         include:
-          # ==== x86_64 BUILDS ====
+          # ==== STANDARD BUILDS ====
           
           # Linux builds
           - os: ubuntu
             runner: ubuntu-latest
             arch: x86_64
+            os_normalized: linux
             target: x86_64-unknown-linux-gnu
             features: ""
             feature_name: "standard"
@@ -31,6 +32,7 @@ jobs:
           - os: ubuntu
             runner: ubuntu-latest
             arch: x86_64
+            os_normalized: linux
             target: x86_64-unknown-linux-gnu
             features: "memory_collection,linux_memory"
             feature_name: "memory"
@@ -39,6 +41,7 @@ jobs:
           - os: ubuntu
             runner: ubuntu-latest
             arch: x86_64
+            os_normalized: linux
             target: x86_64-unknown-linux-gnu
             features: "memory_collection,linux_memory,yara"
             feature_name: "memory+yara"
@@ -49,6 +52,7 @@ jobs:
           - os: macos
             runner: macos-latest
             arch: x86_64
+            os_normalized: macos
             target: x86_64-apple-darwin
             features: ""
             feature_name: "standard"
@@ -57,6 +61,7 @@ jobs:
           - os: macos
             runner: macos-latest
             arch: x86_64
+            os_normalized: macos
             target: x86_64-apple-darwin
             features: "memory_collection,macos_memory"
             feature_name: "memory"
@@ -66,6 +71,7 @@ jobs:
           - os: windows
             runner: windows-latest
             arch: x86_64
+            os_normalized: windows
             target: x86_64-pc-windows-msvc
             features: ""
             feature_name: "standard"
@@ -74,6 +80,7 @@ jobs:
           - os: windows
             runner: windows-latest
             arch: x86_64
+            os_normalized: windows
             target: x86_64-pc-windows-msvc
             features: "memory_collection,windows_memory"
             feature_name: "memory"
@@ -95,6 +102,7 @@ jobs:
           - os: ubuntu
             runner: ubuntu-latest-arm64
             arch: arm64
+            os_normalized: linux
             target: aarch64-unknown-linux-gnu
             features: ""
             feature_name: "standard"
@@ -104,6 +112,7 @@ jobs:
           - os: ubuntu
             runner: ubuntu-latest-arm64
             arch: arm64
+            os_normalized: linux
             target: aarch64-unknown-linux-gnu
             features: "memory_collection,linux_memory"
             feature_name: "memory"
@@ -114,6 +123,7 @@ jobs:
           - os: macos
             runner: macos-14
             arch: arm64
+            os_normalized: macos
             target: aarch64-apple-darwin
             features: ""
             feature_name: "standard"
@@ -123,6 +133,7 @@ jobs:
           - os: macos
             runner: macos-14
             arch: arm64
+            os_normalized: macos
             target: aarch64-apple-darwin
             features: "memory_collection,macos_memory"
             feature_name: "memory"
@@ -133,6 +144,7 @@ jobs:
           - os: windows
             runner: windows-latest
             arch: arm64
+            os_normalized: windows
             target: aarch64-pc-windows-msvc
             features: ""
             feature_name: "standard"
@@ -141,16 +153,78 @@ jobs:
             setup_cross: |
               rustup target add aarch64-pc-windows-msvc
 
-          # ==== EMBEDDED CONFIG VARIANTS ====
+          # ==== EMBEDDED CONFIG BUILDS ====
           
           # Linux with embedded config
           - os: ubuntu
             runner: ubuntu-latest
             arch: x86_64
+            os_normalized: linux
             target: x86_64-unknown-linux-gnu
             features: "embed_config"
             feature_name: "embedded-config"
             dependencies: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+            use_config_embedding: true
+            artifact_name: rust_collector_linux
+          
+          # macOS with embedded config
+          - os: macos
+            runner: macos-latest
+            arch: x86_64
+            os_normalized: macos
+            target: x86_64-apple-darwin
+            features: "embed_config"
+            feature_name: "embedded-config"
+            dependencies: brew install openssl pkg-config
+            use_config_embedding: true
+            artifact_name: rust_collector_macos
+          
+          # Windows with embedded config
+          - os: windows
+            runner: windows-latest
+            arch: x86_64
+            os_normalized: windows
+            target: x86_64-pc-windows-msvc
+            features: "embed_config"
+            feature_name: "embedded-config"
+            dependencies: ""
+            use_config_embedding: true
+            artifact_name: rust_collector_windows.exe
+          
+          # ==== BUILDS USING NEW BUILD COMMAND ====
+          
+          # Linux with build command
+          - os: ubuntu
+            runner: ubuntu-latest
+            arch: x86_64
+            os_normalized: linux
+            target: x86_64-unknown-linux-gnu
+            feature_name: "build-command"
+            dependencies: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+            use_build_command: true
+            artifact_name: rust_collector_linux_cmd
+          
+          # macOS with build command
+          - os: macos
+            runner: macos-latest
+            arch: x86_64
+            os_normalized: macos
+            target: x86_64-apple-darwin
+            feature_name: "build-command"
+            dependencies: brew install openssl pkg-config
+            use_build_command: true
+            artifact_name: rust_collector_macos_cmd
+          
+          # Windows with build command
+          - os: windows
+            runner: windows-latest
+            arch: x86_64
+            os_normalized: windows
+            target: x86_64-pc-windows-msvc
+            feature_name: "build-command"
+            dependencies: ""
+            use_build_command: true
+            artifact_name: rust_collector_windows_cmd.exe
 
     steps:
     - uses: actions/checkout@v4
@@ -192,21 +266,53 @@ jobs:
           ${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.feature_name }}-cargo-
           ${{ matrix.os }}-${{ matrix.arch }}-cargo-
 
+    # Prepare OS-specific config for embedded config builds
+    - name: Prepare OS-specific config
+      if: matrix.use_config_embedding == true
+      shell: bash
+      run: |
+        mkdir -p config/
+        echo "Using OS-specific config for ${{ matrix.os_normalized }}"
+        cp config/default_${{ matrix.os_normalized }}_config.yaml config/default_config.yaml
+        # Also copy to OS-specific location for build.rs to find
+        cp config/default_${{ matrix.os_normalized }}_config.yaml config/default_${{ matrix.os_normalized }}_config.yaml
+    
+    # Set environment variable for build.rs to use specific config
+    - name: Set config environment variable
+      if: matrix.use_config_embedding == true
+      shell: bash
+      run: |
+        echo "RS_COLLECTOR_CONFIG=config/default_${{ matrix.os_normalized }}_config.yaml" >> $GITHUB_ENV
+      
     # Build with the specified features (debug build for testing)
     - name: Debug build
+      if: matrix.use_build_command != true
       run: cargo build --verbose --target ${{ matrix.target }} ${{ matrix.features != '' && format('--features={0}', matrix.features) || '' }}
       
     # Run tests (for non-cross-compiled builds)
     - name: Test
-      if: matrix.native != false
+      if: matrix.native != false && matrix.use_build_command != true
       run: cargo test --verbose --target ${{ matrix.target }} ${{ matrix.features != '' && format('--features={0}', matrix.features) || '' }}
       
     # Build release version
     - name: Release build
+      if: matrix.use_build_command != true
       run: cargo build --release --verbose --target ${{ matrix.target }} ${{ matrix.features != '' && format('--features={0}', matrix.features) || '' }}
+    
+    # Build using the new build command
+    - name: Build with rs-collector build command
+      if: matrix.use_build_command == true
+      shell: bash
+      run: |
+        # First build the tool itself
+        cargo build --verbose
+        
+        # Then use it to build the final binary with embedded config
+        ./target/debug/rust_collector build -c config/default_${{ matrix.os_normalized }}_config.yaml --target-os ${{ matrix.os_normalized }} -n ${{ matrix.artifact_name }}
       
-    # Upload artifacts for release builds
-    - name: Upload artifacts
+    # Upload artifacts for all builds
+    - name: Upload artifacts (standard builds)
+      if: matrix.use_build_command != true
       uses: actions/upload-artifact@v3
       with:
         name: rust_collector-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.feature_name }}
@@ -214,6 +320,14 @@ jobs:
           target/${{ matrix.target }}/release/rust_collector*
           !target/${{ matrix.target }}/release/rust_collector.d
           !target/${{ matrix.target }}/release/rust_collector.pdb
+    
+    # Upload artifacts for build command builds
+    - name: Upload artifacts (build command)
+      if: matrix.use_build_command == true
+      uses: actions/upload-artifact@v3
+      with:
+        name: rust_collector-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.feature_name }}
+        path: ${{ matrix.artifact_name }}
           
     # Optional: Create tagged release when tag is pushed
     - name: Create Release
@@ -221,7 +335,7 @@ jobs:
       if: startsWith(github.ref, 'refs/tags/')
       with:
         files: |
-          target/${{ matrix.target }}/release/rust_collector*
+          ${{ matrix.use_build_command == true && matrix.artifact_name || format('target/{0}/release/rust_collector*', matrix.target) }}
           !target/${{ matrix.target }}/release/rust_collector.d
           !target/${{ matrix.target }}/release/rust_collector.pdb
       env:

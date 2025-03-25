@@ -10,6 +10,7 @@ use tokio::sync::{Mutex, Semaphore};
 use crate::models::ArtifactMetadata;
 use crate::config::{Artifact, ArtifactType, WindowsArtifactType};
 use crate::collectors::platforms;
+use crate::collectors::regex::RegexCollector;
 
 /// Trait for artifact collectors
 #[async_trait::async_trait]
@@ -131,6 +132,7 @@ pub async fn collect_artifacts_parallel(
         let semaphore = Arc::clone(&semaphore);
         let artifact = artifact.clone(); // Clone the artifact for the async move block
         let fs_dir = fs_dir.clone();
+        let base_dir = base_dir.to_path_buf();
         
         async move {
             // Acquire a permit from the semaphore, limiting concurrency
@@ -151,23 +153,76 @@ pub async fn collect_artifacts_parallel(
                 }
             }
             
-            // Attempt to collect the artifact
-            match collector.collect(&artifact, &final_output_path.parent().unwrap_or(&fs_dir)).await {
-                Ok(metadata) => {
-                    // Create a relative path for the result that preserves the original structure
-                    let relative_path = normalize_path_for_storage(&final_output_path.strip_prefix(base_dir).unwrap_or(&final_output_path));
+            // Check if this is a regex-based artifact
+            if let Some(regex_config) = &artifact.regex {
+                if regex_config.enabled {
+                    // Use regex collector for this artifact
+                    let regex_collector = RegexCollector::new();
+                    let source_path = PathBuf::from(&artifact.source_path);
                     
-                    // Add result to the shared map
-                    let mut map = results.lock().await;
-                    map.insert(relative_path, metadata);
-                    info!("Successfully collected: {}", artifact.name);
-                },
-                Err(e) => {
-                    // If the artifact is required, report the error but continue
-                    if artifact.required {
-                        warn!("Failed to collect required artifact {}: {}", artifact.name, e);
-                    } else {
-                        debug!("Failed to collect optional artifact {}: {}", artifact.name, e);
+                    match regex_collector.collect_with_regex(
+                        &artifact,
+                        &source_path,
+                        &final_output_path.parent().unwrap_or(&fs_dir)
+                    ).await {
+                        Ok(collected_items) => {
+                            let mut map = results.lock().await;
+                            for (path, metadata) in collected_items {
+                                let relative_path = normalize_path_for_storage(&path.strip_prefix(&base_dir).unwrap_or(&path));
+                                map.insert(relative_path, metadata);
+                            }
+                            info!("Successfully collected regex artifact: {}", artifact.name);
+                        },
+                        Err(e) => {
+                            // If the artifact is required, report the error but continue
+                            if artifact.required {
+                                warn!("Failed to collect required regex artifact {}: {}", artifact.name, e);
+                            } else {
+                                debug!("Failed to collect optional regex artifact {}: {}", artifact.name, e);
+                            }
+                        }
+                    }
+                } else {
+                    // Standard collection for non-regex artifacts
+                    match collector.collect(&artifact, &final_output_path.parent().unwrap_or(&fs_dir)).await {
+                        Ok(metadata) => {
+                            // Create a relative path for the result that preserves the original structure
+                            let relative_path = normalize_path_for_storage(&final_output_path.strip_prefix(&base_dir).unwrap_or(&final_output_path));
+                            
+                            // Add result to the shared map
+                            let mut map = results.lock().await;
+                            map.insert(relative_path, metadata);
+                            info!("Successfully collected: {}", artifact.name);
+                        },
+                        Err(e) => {
+                            // If the artifact is required, report the error but continue
+                            if artifact.required {
+                                warn!("Failed to collect required artifact {}: {}", artifact.name, e);
+                            } else {
+                                debug!("Failed to collect optional artifact {}: {}", artifact.name, e);
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Standard collection for non-regex artifacts
+                match collector.collect(&artifact, &final_output_path.parent().unwrap_or(&fs_dir)).await {
+                    Ok(metadata) => {
+                        // Create a relative path for the result that preserves the original structure
+                        let relative_path = normalize_path_for_storage(&final_output_path.strip_prefix(&base_dir).unwrap_or(&final_output_path));
+                        
+                        // Add result to the shared map
+                        let mut map = results.lock().await;
+                        map.insert(relative_path, metadata);
+                        info!("Successfully collected: {}", artifact.name);
+                    },
+                    Err(e) => {
+                        // If the artifact is required, report the error but continue
+                        if artifact.required {
+                            warn!("Failed to collect required artifact {}: {}", artifact.name, e);
+                        } else {
+                            debug!("Failed to collect optional artifact {}: {}", artifact.name, e);
+                        }
                     }
                 }
             }

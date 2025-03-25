@@ -4,3 +4,4 @@ pub mod streaming;
 pub mod streaming_facade;
 pub mod volatile;
 pub mod memory;
+pub mod regex;

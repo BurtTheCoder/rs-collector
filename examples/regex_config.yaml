@@ -1,0 +1,86 @@
+version: "1.0"
+description: "Example configuration with regex pattern matching"
+global_options:
+  max_file_size_mb: "1024"
+  generate_bodyfile: "true"
+  bodyfile_calculate_hash: "false"
+  bodyfile_hash_max_size_mb: "100"
+
+artifacts:
+  # Standard artifact collection (no regex)
+  - name: "System Log"
+    artifact_type:
+      Linux: SysLogs
+    source_path: "/var/log/syslog"
+    destination_name: "syslog"
+    description: "System logs"
+    required: false
+    
+  # Regex-based artifact collection - all log files
+  - name: "All Log Files"
+    artifact_type:
+      FileSystem: Logs
+    source_path: "/var/log"
+    destination_name: "logs"
+    description: "All system log files"
+    required: false
+    regex:
+      enabled: true
+      recursive: true
+      include_pattern: ".*\\.log$"
+      exclude_pattern: ".*\\.gz$"
+      max_depth: 2
+      
+  # Regex-based artifact collection - all configuration files
+  - name: "Configuration Files"
+    artifact_type:
+      FileSystem: SystemInfo
+    source_path: "/etc"
+    destination_name: "config"
+    description: "System configuration files"
+    required: false
+    regex:
+      enabled: true
+      recursive: true
+      include_pattern: ".*\\.conf$"
+      max_depth: 3
+      
+  # Regex-based artifact collection - user bash histories
+  - name: "User Bash Histories"
+    artifact_type:
+      Linux: Bash
+    source_path: "/home"
+    destination_name: "bash_histories"
+    description: "User bash command histories"
+    required: false
+    regex:
+      enabled: true
+      recursive: false
+      include_pattern: ".*/.bash_history$"
+      
+  # Windows example - collect all event logs
+  - name: "Windows Event Logs"
+    artifact_type:
+      Windows: EventLog
+    source_path: "C:\\Windows\\System32\\winevt\\Logs"
+    destination_name: "EventLogs"
+    description: "Windows event logs"
+    required: false
+    regex:
+      enabled: true
+      recursive: false
+      include_pattern: ".*\\.evtx$"
+      
+  # macOS example - collect all property list files in user preferences
+  - name: "User Preferences"
+    artifact_type:
+      MacOS: Plist
+    source_path: "/Users"
+    destination_name: "UserPreferences"
+    description: "User preference files"
+    required: false
+    regex:
+      enabled: true
+      recursive: true
+      include_pattern: ".*/Library/Preferences/.*\\.plist$"
+      max_depth: 4
