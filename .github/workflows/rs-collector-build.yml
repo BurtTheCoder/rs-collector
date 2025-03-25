@@ -313,7 +313,7 @@ jobs:
     # Upload artifacts for all builds
     - name: Upload artifacts (standard builds)
       if: matrix.use_build_command != true
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: rust_collector-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.feature_name }}
         path: |
@@ -324,7 +324,7 @@ jobs:
     # Upload artifacts for build command builds
     - name: Upload artifacts (build command)
       if: matrix.use_build_command == true
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: rust_collector-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.feature_name }}
         path: ${{ matrix.artifact_name }}
