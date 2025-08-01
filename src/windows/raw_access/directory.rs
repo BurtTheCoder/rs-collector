@@ -200,7 +200,7 @@ pub fn collect_directory(source_path: &str, dest_path: &Path) -> Result<Artifact
     // Only use multithreading if we have enough files to make it worthwhile
     if files.len() > 8 {
         // Use crossbeam scoped threads for parallel file collection
-        crossbeam::scope(|scope| {
+        let scope_result = crossbeam::scope(|scope| {
             // Determine optimal thread count based on CPU cores and file count
             let thread_count = std::cmp::min(
                 files.len(),
@@ -240,7 +240,12 @@ pub fn collect_directory(source_path: &str, dest_path: &Path) -> Result<Artifact
             for handle in handles {
                 let _ = handle.join();
             }
-        }).unwrap();
+        });
+        
+        if let Err(e) = scope_result {
+            warn!("Error in parallel file collection: {:?}", e);
+            is_locked.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
     } else {
         // Process files sequentially for small sets
         for (file_src, file_dest) in files {

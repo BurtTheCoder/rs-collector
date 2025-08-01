@@ -3,7 +3,7 @@
 //! This module provides a cross-platform implementation for memory collection
 //! using the MemProcFS library.
 
-use anyhow::{Result, bail, Context};
+use anyhow::{anyhow, Result, bail, Context};
 use log::{debug, warn, info, error};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -231,7 +231,8 @@ impl MemProcFSCollector {
             return Ok(proc.clone());
         }
         
-        let vmm = self.vmm.lock().unwrap();
+        let vmm = self.vmm.lock()
+            .map_err(|e| anyhow!("Failed to acquire VMM lock: {}", e))?;
         match vmm.process_from_pid(pid) {
             Ok(proc) => {
                 // This would need to be mutable to update cache

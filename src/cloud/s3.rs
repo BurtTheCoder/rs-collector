@@ -129,11 +129,10 @@ impl UploadQueue {
         self.total_bytes.fetch_add(file_size, Ordering::SeqCst);
         
         // Determine S3 key
-        let key = format!(
-            "{}/{}",
-            self.prefix,
-            file_path.file_name().unwrap().to_string_lossy()
-        );
+        let filename = file_path.file_name()
+            .ok_or_else(|| anyhow!("Invalid file path - no filename component: {}", file_path.display()))?
+            .to_string_lossy();
+        let key = format!("{}/{}", self.prefix, filename);
         
         debug!("Starting upload of {} ({} bytes) to s3://{}/{}", 
                file_path.display(), file_size, self.bucket, key);
@@ -488,8 +487,11 @@ pub async fn upload_to_s3(
     match result {
         Ok(_) => {
             let region_name = queue.get_region().name();
+            let filename = file_path.file_name()
+                .map(|name| name.to_string_lossy())
+                .unwrap_or_else(|| "unknown".into());
             info!("Upload completed successfully: s3://{}/{}/{} in region {}", 
-                 bucket, prefix, file_path.file_name().unwrap().to_string_lossy(), region_name);
+                 bucket, prefix, filename, region_name);
             Ok(())
         },
         Err(e) => Err(anyhow!("Failed to upload to S3: {}", e))

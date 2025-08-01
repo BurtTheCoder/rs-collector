@@ -298,11 +298,16 @@ impl SFTPClient {
     async fn upload_large_file(&self, local_path: &Path, remote_path: &str, file_size: u64) -> Result<()> {
         // Create session and SFTP subsystem
         let session = Arc::new(Mutex::new(self.create_session()?));
-        let sftp = Arc::new(Mutex::new(Self::create_sftp(&session.lock().unwrap())?));
+        let sftp = {
+            let session_guard = session.lock()
+                .map_err(|e| anyhow!("Failed to acquire session lock: {}", e))?;
+            Arc::new(Mutex::new(Self::create_sftp(&session_guard)?))
+        };
         
         // Create remote file
         let remote_file = {
-            let sftp_guard = sftp.lock().unwrap();
+            let sftp_guard = sftp.lock()
+                .map_err(|e| anyhow!("Failed to acquire SFTP lock: {}", e))?;
             sftp_guard.create(Path::new(remote_path))
                 .context(format!("Failed to create remote file: {}", remote_path))?
         };
@@ -334,7 +339,8 @@ impl SFTPClient {
             }
             
             // Write chunk to remote file
-            let mut remote_file_guard = remote_file.lock().unwrap();
+            let mut remote_file_guard = remote_file.lock()
+                .map_err(|e| anyhow!("Failed to acquire remote file lock: {}", e))?;
             remote_file_guard.write_all(&buffer[0..bytes_read])
                 .context(format!("Failed to write chunk {} to {}", chunk_index, remote_path))?;
             
@@ -447,9 +453,12 @@ pub async fn upload_to_sftp(
     
     match result {
         Ok(_) => {
+            let filename = file_path.file_name()
+                .map(|name| name.to_string_lossy())
+                .unwrap_or_else(|| "unknown".into());
             info!("Upload completed successfully: sftp://{}@{}:{}{}/{}", 
                  config.username, config.host, config.port, config.remote_path,
-                 file_path.file_name().unwrap().to_string_lossy());
+                 filename);
             Ok(())
         },
         Err(e) => Err(anyhow!("Failed to upload to SFTP: {}", e))
