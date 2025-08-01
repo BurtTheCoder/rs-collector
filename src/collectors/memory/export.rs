@@ -3,9 +3,9 @@
 //! This module handles exporting memory dumps to files and generating metadata.
 
 use anyhow::{Result, Context};
-use log::{debug, warn};
+use log::debug;
 use std::fs::{self, File};
-use std::io::{self, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use chrono::Utc;
 use serde_json;

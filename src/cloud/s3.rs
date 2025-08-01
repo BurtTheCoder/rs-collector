@@ -20,9 +20,7 @@ use tokio::time::sleep;
 use crate::constants::{
     S3_UPLOAD_CHUNK_SIZE as UPLOAD_CHUNK_SIZE,
     MAX_UPLOAD_RETRIES,
-    LARGE_FILE_THRESHOLD,
-    RETRY_BASE_DELAY_MS,
-    RETRY_MAX_DELAY_SECS
+    LARGE_FILE_THRESHOLD
 };
 
 /// Async file queue for concurrent uploads to Amazon S3.

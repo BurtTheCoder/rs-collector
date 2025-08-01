@@ -4,7 +4,6 @@
 //! including memory regions, process information, and collection summaries.
 
 use serde::{Serialize, Deserialize};
-use std::path::PathBuf;
 use std::collections::HashMap;
 
 /// Memory region type

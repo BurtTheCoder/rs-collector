@@ -15,7 +15,7 @@ pub mod collector;
 pub mod memprocfs;
 
 use anyhow::Result;
-use log::{info, warn};
+use log::warn;
 use std::path::Path;
 
 use crate::collectors::volatile::models::ProcessInfo;

@@ -4,10 +4,10 @@
 //! using the /proc filesystem.
 
 use anyhow::{Result, Context, bail};
-use log::{debug, info, warn, error};
+use log::{debug, info, warn};
 use std::fs::{self, File};
 use std::io::{self, Read, Seek, SeekFrom};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::collections::HashMap;
 
 use crate::collectors::memory::models::{
@@ -15,7 +15,7 @@ use crate::collectors::memory::models::{
 };
 use crate::collectors::memory::platforms::MemoryCollectorImpl;
 use crate::collectors::volatile::models::ProcessInfo;
-use crate::constants::{MEMORY_CHUNK_SIZE, PROC_PATH};
+use crate::constants::MEMORY_CHUNK_SIZE;
 
 /// Linux memory collector implementation
 pub struct LinuxMemoryCollector {

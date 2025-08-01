@@ -1,11 +1,10 @@
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
-use anyhow::{Result, Context};
-use log::{debug, info, warn};
+use anyhow::Result;
+use log::{debug, info};
 
 use crate::models::ArtifactMetadata;
-use crate::config::{Artifact, ArtifactType, RegexConfig};
+use crate::config::Artifact;
 use crate::collectors::platforms::common::FallbackCollector;
 use crate::collectors::regex::walker::DirectoryWalker;
 

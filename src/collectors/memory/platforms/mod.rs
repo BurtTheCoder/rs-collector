@@ -3,9 +3,8 @@
 //! This module provides platform-specific implementations for memory collection.
 
 use anyhow::Result;
-use std::path::Path;
 
-use crate::collectors::memory::models::{ProcessMemoryInfo, MemoryRegionInfo};
+use crate::collectors::memory::models::MemoryRegionInfo;
 use crate::collectors::volatile::models::ProcessInfo;
 
 #[cfg(target_os = "windows")]

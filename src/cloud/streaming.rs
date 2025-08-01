@@ -8,8 +8,7 @@ use anyhow::{Context as AnyhowContext, Result, anyhow};
 use crate::cloud::streaming_target::StreamingTarget;
 use crate::constants::{
     MAX_UPLOAD_RETRIES as MAX_RETRIES,
-    S3_MIN_PART_SIZE as MIN_PART_SIZE,
-    RETRY_BASE_DELAY_MS
+    S3_MIN_PART_SIZE as MIN_PART_SIZE
 };
 use bytes::{Bytes, BytesMut};
 use log::{debug, warn};

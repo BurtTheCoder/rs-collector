@@ -1,6 +1,5 @@
 use std::path::{Path, PathBuf};
 use std::fs;
-use std::sync::Arc;
 
 use anyhow::{Result, Context};
 use log::{debug, warn};

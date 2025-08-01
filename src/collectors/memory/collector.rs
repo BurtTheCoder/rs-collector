@@ -3,11 +3,10 @@
 //! This module provides the main implementation for collecting process memory.
 
 use anyhow::{Result, Context, bail};
-use log::{debug, info, warn, error};
-use std::path::{Path, PathBuf};
+use log::{debug, info, warn};
+use std::path::Path;
 use std::time::Instant;
 use chrono::Utc;
-use std::collections::HashMap;
 
 use crate::collectors::memory::models::{
     ProcessMemoryInfo, MemoryCollectionOptions, MemoryCollectionSummary,

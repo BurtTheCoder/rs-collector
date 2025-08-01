@@ -6,31 +6,34 @@ use std::fs;
 use std::path::Path;
 use std::time::{Duration, Instant};
 use anyhow::Result;
-use tempfile::TempDir;
-
+use chrono;
 use rust_collector::utils::hash::calculate_sha256;
-use rust_collector::utils::compress::create_zip_file;
+use rust_collector::utils::compress::compress_artifacts;
 use rust_collector::config::{Artifact, ArtifactType};
 use rust_collector::collectors::collector::collect_artifacts;
 
 fn main() -> Result<()> {
     println!("rs-collector Performance Test Suite\n");
     
-    // Create test data
-    let test_dir = TempDir::new()?;
-    println!("Creating test data in: {}", test_dir.path().display());
+    // Create test data directory
+    let test_dir = Path::new("./perf_test_data");
+    fs::create_dir_all(&test_dir)?;
+    println!("Creating test data in: {}", test_dir.display());
     
     // Run tests
     test_hash_performance(&test_dir)?;
     test_compression_performance(&test_dir)?;
     test_collection_performance(&test_dir)?;
     
+    // Cleanup
+    fs::remove_dir_all(&test_dir)?;
+    
     println!("\nPerformance tests completed!");
     Ok(())
 }
 
 /// Test hash calculation performance
-fn test_hash_performance(test_dir: &TempDir) -> Result<()> {
+fn test_hash_performance(test_dir: &Path) -> Result<()> {
     println!("\n=== Hash Performance Test ===");
     
     let sizes = vec![
@@ -40,7 +43,7 @@ fn test_hash_performance(test_dir: &TempDir) -> Result<()> {
     ];
     
     for (size, label) in sizes {
-        let file_path = test_dir.path().join(format!("hash_test_{}.bin", label));
+        let file_path = test_dir.join(format!("hash_test_{}.bin", label));
         
         // Create test file
         println!("Creating {} test file...", label);
@@ -67,14 +70,14 @@ fn test_hash_performance(test_dir: &TempDir) -> Result<()> {
 }
 
 /// Test compression performance
-fn test_compression_performance(test_dir: &TempDir) -> Result<()> {
+fn test_compression_performance(test_dir: &Path) -> Result<()> {
     println!("\n=== Compression Performance Test ===");
     
     // Create test files
     let file_count = 100;
     let file_size = 100 * 1024; // 100KB each
     
-    let source_dir = test_dir.path().join("compress_test");
+    let source_dir = test_dir.join("compress_test");
     fs::create_dir_all(&source_dir)?;
     
     println!("Creating {} test files...", file_count);
@@ -84,11 +87,11 @@ fn test_compression_performance(test_dir: &TempDir) -> Result<()> {
         fs::write(&file_path, data)?;
     }
     
-    let output_path = test_dir.path().join("compressed.zip");
-    
-    // Time compression
+    // Time compression using compress_artifacts
     let start = Instant::now();
-    create_zip_file(&source_dir, &output_path)?;
+    let hostname = "test-host";
+    let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
+    let output_path = compress_artifacts(&source_dir, hostname, &timestamp)?;
     let duration = start.elapsed();
     
     let input_size = (file_count * file_size) as f64 / 1024.0 / 1024.0;
@@ -115,11 +118,11 @@ fn test_compression_performance(test_dir: &TempDir) -> Result<()> {
 }
 
 /// Test artifact collection performance
-fn test_collection_performance(test_dir: &TempDir) -> Result<()> {
+fn test_collection_performance(test_dir: &Path) -> Result<()> {
     println!("\n=== Collection Performance Test ===");
     
-    let source_dir = test_dir.path().join("collect_test");
-    let output_dir = test_dir.path().join("collected");
+    let source_dir = test_dir.join("collect_test");
+    let output_dir = test_dir.join("collected");
     fs::create_dir_all(&source_dir)?;
     fs::create_dir_all(&output_dir)?;
     
