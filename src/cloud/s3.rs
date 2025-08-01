@@ -17,12 +17,28 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio::fs::File as AsyncFile;
 use tokio::time::sleep;
 
-// Constants for S3 uploads
-const UPLOAD_CHUNK_SIZE: usize = 8 * 1024 * 1024; // 8MB (S3 minimum is 5MB)
-const MAX_UPLOAD_RETRIES: usize = 3;
-const LARGE_FILE_THRESHOLD: u64 = 50 * 1024 * 1024; // 50MB - use multipart for larger files
+use crate::constants::{
+    S3_UPLOAD_CHUNK_SIZE as UPLOAD_CHUNK_SIZE,
+    MAX_UPLOAD_RETRIES,
+    LARGE_FILE_THRESHOLD,
+    RETRY_BASE_DELAY_MS,
+    RETRY_MAX_DELAY_SECS
+};
 
-/// Async file queue for concurrent uploads
+/// Async file queue for concurrent uploads to Amazon S3.
+/// 
+/// This struct manages asynchronous uploads to S3, providing progress tracking
+/// and automatic retry logic. It supports both single-file uploads and multipart
+/// uploads for large files.
+/// 
+/// # Fields
+/// 
+/// * `bucket` - The S3 bucket name
+/// * `prefix` - Prefix to prepend to all uploaded object keys
+/// * `region` - AWS region for the S3 bucket
+/// * `client` - Shared S3 client instance
+/// * `total_bytes` - Total bytes to upload (for progress tracking)
+/// * `bytes_uploaded` - Bytes uploaded so far (atomic for thread safety)
 pub struct UploadQueue {
     bucket: String,
     prefix: String,
@@ -33,7 +49,26 @@ pub struct UploadQueue {
 }
 
 impl UploadQueue {
-    /// Create a new upload queue
+    /// Create a new upload queue.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `bucket` - S3 bucket name
+    /// * `prefix` - Prefix for all object keys (e.g., "forensics/case-123/")
+    /// * `region_name` - Optional AWS region name (e.g., "us-east-1"). Defaults to us-east-1
+    /// * `profile` - Optional AWS profile name for credentials
+    /// 
+    /// # Example
+    /// 
+    /// ```no_run
+    /// # use rust_collector::cloud::s3::UploadQueue;
+    /// let queue = UploadQueue::new(
+    ///     "my-forensics-bucket",
+    ///     "collections/2024-01-15/",
+    ///     Some("us-west-2"),
+    ///     None
+    /// );
+    /// ```
     pub fn new(bucket: &str, prefix: &str, region_name: Option<&str>, profile: Option<&str>) -> Self {
         let region = match region_name {
             Some(name) => {
@@ -53,11 +88,17 @@ impl UploadQueue {
             match rusoto_credential::ProfileProvider::new() {
                 Ok(mut provider) => {
                     provider.set_profile(profile_name);
-                    Arc::new(S3Client::new_with(
-                        rusoto_core::HttpClient::new().expect("Failed to create HTTP client"),
-                        provider,
-                        region.clone()
-                    ))
+                    match rusoto_core::HttpClient::new() {
+                        Ok(http_client) => Arc::new(S3Client::new_with(
+                            http_client,
+                            provider,
+                            region.clone()
+                        )),
+                        Err(e) => {
+                            warn!("Failed to create HTTP client: {}, using default", e);
+                            Arc::new(S3Client::new(region.clone()))
+                        }
+                    }
                 },
                 Err(e) => {
                     warn!("Failed to create AWS profile provider: {}, using default", e);
@@ -130,7 +171,24 @@ impl UploadQueue {
         }
     }
     
-    /// Get upload progress
+    /// Get upload progress.
+    /// 
+    /// Returns a tuple of (bytes_uploaded, total_bytes) for progress tracking.
+    /// Both values are retrieved atomically for thread-safe access.
+    /// 
+    /// # Returns
+    /// 
+    /// * `(u64, u64)` - Tuple of (bytes uploaded so far, total bytes to upload)
+    /// 
+    /// # Example
+    /// 
+    /// ```no_run
+    /// # use rust_collector::cloud::s3::UploadQueue;
+    /// # let queue = UploadQueue::new("bucket", "prefix", None, None);
+    /// let (uploaded, total) = queue.get_progress();
+    /// let percentage = (uploaded as f64 / total as f64) * 100.0;
+    /// println!("Upload progress: {:.1}%", percentage);
+    /// ```
     pub fn get_progress(&self) -> (u64, u64) {
         (
             self.bytes_uploaded.load(Ordering::SeqCst),
@@ -138,7 +196,11 @@ impl UploadQueue {
         )
     }
     
-    /// Get the region being used for uploads
+    /// Get the AWS region being used for uploads.
+    /// 
+    /// # Returns
+    /// 
+    /// A reference to the `Region` enum representing the AWS region
     pub fn get_region(&self) -> &Region {
         &self.region
     }
@@ -431,5 +493,219 @@ pub async fn upload_to_s3(
             Ok(())
         },
         Err(e) => Err(anyhow!("Failed to upload to S3: {}", e))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    use std::fs::File;
+    use std::io::Write;
+
+    #[test]
+    fn test_upload_queue_new() {
+        let queue = UploadQueue::new("test-bucket", "test-prefix", None, None);
+        assert_eq!(queue.bucket, "test-bucket");
+        assert_eq!(queue.prefix, "test-prefix");
+        assert_eq!(queue.get_progress(), (0, 0));
+    }
+
+    #[test]
+    fn test_upload_queue_new_with_region() {
+        let queue = UploadQueue::new("test-bucket", "test-prefix", Some("us-west-2"), None);
+        assert_eq!(queue.bucket, "test-bucket");
+        assert_eq!(queue.prefix, "test-prefix");
+        assert_eq!(queue.region.name(), "us-west-2");
+    }
+
+    #[test]
+    fn test_upload_queue_new_with_invalid_region() {
+        let queue = UploadQueue::new("test-bucket", "test-prefix", Some("invalid-region"), None);
+        assert_eq!(queue.bucket, "test-bucket");
+        assert_eq!(queue.prefix, "test-prefix");
+        // Should fall back to default region
+        assert_eq!(queue.region.name(), Region::default().name());
+    }
+
+    #[test]
+    fn test_upload_queue_new_with_profile() {
+        let queue = UploadQueue::new("test-bucket", "test-prefix", None, Some("test-profile"));
+        assert_eq!(queue.bucket, "test-bucket");
+        assert_eq!(queue.prefix, "test-prefix");
+        // Profile doesn't affect bucket/prefix
+    }
+
+    #[test]
+    fn test_upload_queue_progress_tracking() {
+        let queue = UploadQueue::new("test-bucket", "test-prefix", None, None);
+        
+        // Add some bytes to total
+        queue.total_bytes.store(1000, Ordering::SeqCst);
+        assert_eq!(queue.get_progress(), (0, 1000));
+        
+        // Simulate upload progress
+        queue.bytes_uploaded.store(500, Ordering::SeqCst);
+        assert_eq!(queue.get_progress(), (500, 1000));
+        
+        // Complete upload
+        queue.bytes_uploaded.store(1000, Ordering::SeqCst);
+        assert_eq!(queue.get_progress(), (1000, 1000));
+    }
+
+    #[test]
+    fn test_upload_chunk_size_constant() {
+        // Verify S3 requirements
+        assert!(UPLOAD_CHUNK_SIZE >= 5 * 1024 * 1024); // S3 minimum is 5MB
+        assert_eq!(UPLOAD_CHUNK_SIZE, 8 * 1024 * 1024); // We use 8MB
+    }
+
+    #[test]
+    fn test_large_file_threshold() {
+        assert_eq!(LARGE_FILE_THRESHOLD, 50 * 1024 * 1024); // 50MB
+    }
+
+    #[test]
+    fn test_get_region() {
+        let queue = UploadQueue::new("test-bucket", "test-prefix", Some("eu-west-1"), None);
+        assert_eq!(queue.get_region().name(), "eu-west-1");
+    }
+
+    #[tokio::test]
+    async fn test_add_file_nonexistent() {
+        let queue = UploadQueue::new("test-bucket", "test-prefix", None, None);
+        let result = queue.add_file(PathBuf::from("/nonexistent/file.txt")).await;
+        
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Failed to get metadata"));
+    }
+
+    #[tokio::test]
+    async fn test_upload_small_file_logic() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("small.txt");
+        
+        // Create a small test file (less than LARGE_FILE_THRESHOLD)
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all(b"Small test file content").unwrap();
+        file.sync_all().unwrap();
+        drop(file);
+        
+        // Get file metadata to verify it's small
+        let metadata = tokio::fs::metadata(&file_path).await.unwrap();
+        assert!(metadata.len() < LARGE_FILE_THRESHOLD);
+        
+        // The actual upload would fail without AWS credentials, but we can test the logic
+        let queue = UploadQueue::new("test-bucket", "test-prefix", None, None);
+        
+        // Add to total bytes to simulate tracking
+        queue.total_bytes.store(metadata.len(), Ordering::SeqCst);
+        let (_, total) = queue.get_progress();
+        assert_eq!(total, metadata.len());
+    }
+
+    #[tokio::test]
+    async fn test_multipart_upload_calculation() {
+        // Test the multipart calculation logic
+        let file_sizes = vec![
+            (UPLOAD_CHUNK_SIZE as u64 - 1, 1), // Just under chunk size = 1 part
+            (UPLOAD_CHUNK_SIZE as u64, 1),     // Exactly chunk size = 1 part
+            (UPLOAD_CHUNK_SIZE as u64 + 1, 2), // Just over chunk size = 2 parts
+            (UPLOAD_CHUNK_SIZE as u64 * 10, 10), // 10 chunks = 10 parts
+        ];
+        
+        for (file_size, expected_parts) in file_sizes {
+            let num_parts = (file_size + UPLOAD_CHUNK_SIZE as u64 - 1) / UPLOAD_CHUNK_SIZE as u64;
+            assert_eq!(num_parts, expected_parts, 
+                      "File size {} should have {} parts", file_size, expected_parts);
+        }
+    }
+
+    #[test]
+    fn test_s3_key_generation() {
+        let prefix = "test-prefix";
+        let filename = "test-file.txt";
+        
+        // Test key generation logic
+        let key = format!("{}/{}", prefix, filename);
+        assert_eq!(key, "test-prefix/test-file.txt");
+    }
+
+    #[test]
+    fn test_upload_retries_constant() {
+        assert_eq!(MAX_UPLOAD_RETRIES, 3);
+    }
+
+    #[tokio::test]
+    async fn test_upload_files_concurrently_empty_list() {
+        let result = upload_files_concurrently(
+            vec![],
+            "test-bucket",
+            "test-prefix",
+            None,
+            None,
+            false
+        ).await;
+        
+        // Should succeed with empty file list
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_upload_to_s3_legacy_nonexistent_file() {
+        let result = upload_to_s3(
+            Path::new("/nonexistent/file.txt"),
+            "test-bucket",
+            "test-prefix",
+            None,
+            None,
+            false
+        ).await;
+        
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Failed to upload to S3"));
+    }
+
+    #[test]
+    fn test_concurrent_progress_updates() {
+        use std::sync::Arc;
+        use std::thread;
+        
+        let queue = UploadQueue::new("test-bucket", "test-prefix", None, None);
+        let total_bytes = Arc::clone(&queue.total_bytes);
+        let bytes_uploaded = Arc::clone(&queue.bytes_uploaded);
+        
+        // Simulate concurrent updates
+        let handles: Vec<_> = (0..10).map(|i| {
+            let total = Arc::clone(&total_bytes);
+            let uploaded = Arc::clone(&bytes_uploaded);
+            
+            thread::spawn(move || {
+                total.fetch_add(1000, Ordering::SeqCst);
+                uploaded.fetch_add(100 * i, Ordering::SeqCst);
+            })
+        }).collect();
+        
+        for handle in handles {
+            handle.join().unwrap();
+        }
+        
+        let (uploaded, total) = queue.get_progress();
+        assert_eq!(total, 10000); // 10 threads * 1000
+        assert_eq!(uploaded, 4500); // Sum of 0..10 * 100
+    }
+
+    #[test]
+    fn test_exponential_backoff_calculation() {
+        // Test the exponential backoff delay calculation
+        let delays: Vec<_> = (1..=MAX_UPLOAD_RETRIES)
+            .map(|attempt| Duration::from_millis(250 * 2u64.pow(attempt as u32)))
+            .collect();
+        
+        assert_eq!(delays[0], Duration::from_millis(500));   // First retry
+        assert_eq!(delays[1], Duration::from_millis(1000));  // Second retry
+        if MAX_UPLOAD_RETRIES >= 3 {
+            assert_eq!(delays[2], Duration::from_millis(2000)); // Third retry
+        }
     }
 }

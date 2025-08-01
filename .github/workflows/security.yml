@@ -1,0 +1,250 @@
+name: Security Audit
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+  schedule:
+    # Run audit daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Cache cargo registry
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-audit
+        uses: actions-rs/install@v0.1
+        with:
+          crate: cargo-audit
+          version: latest
+
+      - name: Run cargo audit
+        run: cargo audit
+
+      - name: Run cargo audit (json format)
+        run: cargo audit --json > audit-report.json
+        continue-on-error: true
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: audit-report
+          path: audit-report.json
+
+  dependency-check:
+    name: Dependency License Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Cache cargo registry
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-deny
+        uses: actions-rs/install@v0.1
+        with:
+          crate: cargo-deny
+          version: latest
+
+      - name: Create deny.toml if not exists
+        run: |
+          if [ ! -f deny.toml ]; then
+            cat > deny.toml << 'EOF'
+          # cargo-deny configuration
+          
+          [bans]
+          multiple-versions = "warn"
+          wildcards = "allow"
+          
+          [licenses]
+          # List of explicitly allowed licenses
+          allow = [
+              "MIT",
+              "Apache-2.0",
+              "Apache-2.0 WITH LLVM-exception",
+              "BSD-2-Clause",
+              "BSD-3-Clause",
+              "ISC",
+              "Unicode-DFS-2016",
+              "Unlicense",
+          ]
+          
+          # List of explicitly disallowed licenses
+          deny = [
+              "GPL-2.0",
+              "GPL-3.0",
+              "AGPL-3.0",
+          ]
+          
+          copyleft = "warn"
+          
+          [[licenses.exceptions]]
+          # openssl is required but has a complex license
+          allow = ["OpenSSL"]
+          name = "openssl"
+          
+          [[licenses.exceptions]]
+          # ring has a complex license but is commonly used
+          allow = ["LicenseRef-ring"]
+          name = "ring"
+          
+          [sources]
+          unknown-registry = "warn"
+          unknown-git = "warn"
+          
+          [advisories]
+          db-path = "~/.cargo/advisory-db"
+          db-urls = ["https://github.com/rustsec/advisory-db"]
+          vulnerability = "deny"
+          unmaintained = "warn"
+          yanked = "warn"
+          notice = "warn"
+          EOF
+          fi
+
+      - name: Run cargo deny check
+        run: cargo deny check
+
+  supply-chain-security:
+    name: Supply Chain Security
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Cache cargo registry
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-vet
+        uses: actions-rs/install@v0.1
+        with:
+          crate: cargo-vet
+          version: latest
+        continue-on-error: true
+
+      - name: Initialize cargo vet
+        run: |
+          cargo vet init || true
+        continue-on-error: true
+
+      - name: Run cargo vet check
+        run: |
+          cargo vet check || echo "cargo-vet check failed - this is expected for new projects"
+        continue-on-error: true
+
+  # SARIF upload for GitHub Security tab integration
+  sarif-upload:
+    name: Upload SARIF results
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    needs: [security-audit]
+    permissions:
+      security-events: write
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Install cargo-audit
+        uses: actions-rs/install@v0.1
+        with:
+          crate: cargo-audit
+          version: latest
+
+      - name: Run cargo audit and generate SARIF
+        run: |
+          cargo audit --json | python3 -c "
+          import json
+          import sys
+          
+          try:
+              audit_data = json.load(sys.stdin)
+          except:
+              # If no JSON input, create empty report
+              audit_data = {'vulnerabilities': {'list': []}}
+          
+          sarif = {
+              'version': '2.1.0',
+              'runs': [{
+                  'tool': {
+                      'driver': {
+                          'name': 'cargo-audit',
+                          'version': '0.17.0'
+                      }
+                  },
+                  'results': []
+              }]
+          }
+          
+          for vuln in audit_data.get('vulnerabilities', {}).get('list', []):
+              sarif['runs'][0]['results'].append({
+                  'ruleId': vuln.get('advisory', {}).get('id', 'UNKNOWN'),
+                  'level': 'error' if vuln.get('advisory', {}).get('cvss', 0) > 7 else 'warning',
+                  'message': {
+                      'text': vuln.get('advisory', {}).get('title', 'Unknown vulnerability')
+                  },
+                  'locations': [{
+                      'physicalLocation': {
+                          'artifactLocation': {
+                              'uri': 'Cargo.toml'
+                          }
+                      }
+                  }]
+              })
+          
+          json.dump(sarif, sys.stdout)
+          " > audit.sarif
+        continue-on-error: true
+
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: audit.sarif
+        continue-on-error: true

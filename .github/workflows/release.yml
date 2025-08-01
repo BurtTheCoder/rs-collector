@@ -1,0 +1,299 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g., v1.0.0)'
+        required: true
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      version: ${{ steps.get_version.outputs.version }}
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ github.event.inputs.tag }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.get_version.outputs.version }}
+          release_name: Release ${{ steps.get_version.outputs.version }}
+          draft: false
+          prerelease: false
+          body: |
+            # Release ${{ steps.get_version.outputs.version }}
+            
+            ## Changes
+            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
+            
+            ## Installation
+            Download the appropriate binary for your platform below.
+            
+            ### Checksums
+            SHA256 checksums are provided for each binary in the release assets.
+
+  build-release:
+    name: Build Release
+    needs: create-release
+    strategy:
+      matrix:
+        include:
+          # Linux builds
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            name: rs-collector-linux-amd64
+            features: "default"
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            name: rs-collector-linux-arm64
+            features: "default"
+            use-cross: true
+          
+          # Windows builds
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            name: rs-collector-windows-amd64.exe
+            features: "default"
+          - target: aarch64-pc-windows-msvc
+            os: windows-latest
+            name: rs-collector-windows-arm64.exe
+            features: "default"
+          
+          # macOS builds
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            name: rs-collector-macos-amd64
+            features: "default"
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            name: rs-collector-macos-arm64
+            features: "default"
+          
+          # Special builds with all features
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            name: rs-collector-linux-amd64-full
+            features: "memory_collection,embed_config,yara"
+            yara-deps: true
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
+
+      - name: Cache cargo registry
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ runner.os }}-cargo-release-${{ matrix.target }}
+
+      - name: Install dependencies (Ubuntu)
+        if: matrix.os == 'ubuntu-latest' && matrix.yara-deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libyara-dev
+
+      - name: Install dependencies (macOS)
+        if: matrix.os == 'macos-latest' && matrix.features == 'memory_collection,embed_config,yara'
+        run: |
+          brew install yara
+
+      - name: Install cross-compilation tools
+        if: matrix.use-cross == true
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: true
+          command: version
+
+      - name: Build release binary
+        if: matrix.use-cross != true
+        run: |
+          cargo build --release --target ${{ matrix.target }} --features "${{ matrix.features }}"
+
+      - name: Build release binary (cross)
+        if: matrix.use-cross == true
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: true
+          command: build
+          args: --release --target ${{ matrix.target }} --features "${{ matrix.features }}"
+
+      - name: Strip binary (Linux/macOS)
+        if: matrix.os != 'windows-latest'
+        run: |
+          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+            strip target/${{ matrix.target }}/release/rs-collector
+          else
+            if [[ "${{ matrix.use-cross }}" != "true" ]]; then
+              strip target/${{ matrix.target }}/release/rs-collector
+            fi
+          fi
+
+      - name: Package binary
+        shell: bash
+        run: |
+          cd target/${{ matrix.target }}/release
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            7z a ../../../${{ matrix.name }}.zip rs-collector.exe
+            mv rs-collector.exe ../../../${{ matrix.name }}
+          else
+            tar czf ../../../${{ matrix.name }}.tar.gz rs-collector
+            mv rs-collector ../../../${{ matrix.name }}
+          fi
+          cd ../../../
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            sha256sum ${{ matrix.name }} > ${{ matrix.name }}.sha256
+            sha256sum ${{ matrix.name }}.zip > ${{ matrix.name }}.zip.sha256
+          else
+            if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+              shasum -a 256 ${{ matrix.name }} > ${{ matrix.name }}.sha256
+              shasum -a 256 ${{ matrix.name }}.tar.gz > ${{ matrix.name }}.tar.gz.sha256
+            else
+              sha256sum ${{ matrix.name }} > ${{ matrix.name }}.sha256
+              sha256sum ${{ matrix.name }}.tar.gz > ${{ matrix.name }}.tar.gz.sha256
+            fi
+          fi
+
+      - name: Upload binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./${{ matrix.name }}
+          asset_name: ${{ matrix.name }}
+          asset_content_type: application/octet-stream
+
+      - name: Upload archive (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./${{ matrix.name }}.zip
+          asset_name: ${{ matrix.name }}.zip
+          asset_content_type: application/zip
+
+      - name: Upload archive (Linux/macOS)
+        if: matrix.os != 'windows-latest'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./${{ matrix.name }}.tar.gz
+          asset_name: ${{ matrix.name }}.tar.gz
+          asset_content_type: application/gzip
+
+      - name: Upload checksums
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./${{ matrix.name }}.sha256
+          asset_name: ${{ matrix.name }}.sha256
+          asset_content_type: text/plain
+
+      - name: Upload archive checksum (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./${{ matrix.name }}.zip.sha256
+          asset_name: ${{ matrix.name }}.zip.sha256
+          asset_content_type: text/plain
+
+      - name: Upload archive checksum (Linux/macOS)
+        if: matrix.os != 'windows-latest'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./${{ matrix.name }}.tar.gz.sha256
+          asset_name: ${{ matrix.name }}.tar.gz.sha256
+          asset_content_type: text/plain
+
+  publish-checksums:
+    name: Publish Combined Checksums
+    needs: [create-release, build-release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Download release assets
+        run: |
+          mkdir -p checksums
+          cd checksums
+          
+          # Get release ID
+          RELEASE_ID=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ needs.create-release.outputs.version }}" \
+            | jq -r '.id')
+          
+          # Download all .sha256 files
+          curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/${RELEASE_ID}/assets" \
+            | jq -r '.[] | select(.name | endswith(".sha256")) | .browser_download_url' \
+            | while read url; do
+                curl -sL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                  -H "Accept: application/octet-stream" "$url" -O
+              done
+
+      - name: Create combined checksums file
+        run: |
+          cd checksums
+          cat *.sha256 | sort > ../checksums.txt
+          cd ..
+
+      - name: Upload combined checksums
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./checksums.txt
+          asset_name: checksums.txt
+          asset_content_type: text/plain

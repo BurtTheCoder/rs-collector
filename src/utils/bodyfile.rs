@@ -17,13 +17,39 @@ use crate::utils::hash::calculate_sha256;
 
 /// Convert Unix timestamp to ISO 8601 format
 fn unix_to_iso8601(timestamp: u64) -> String {
+    // Check if timestamp is too large to fit in i64
+    if timestamp > i64::MAX as u64 {
+        return "0000-00-00T00:00:00Z".to_string(); // Invalid timestamp
+    }
+    
     match Utc.timestamp_opt(timestamp as i64, 0) {
         chrono::LocalResult::Single(dt) => dt.to_rfc3339(),
         _ => "0000-00-00T00:00:00Z".to_string() // Invalid timestamp
     }
 }
 
-/// Generate a bodyfile for the filesystem with advanced options
+/// Generate a bodyfile for the filesystem with advanced options.
+/// 
+/// Creates a bodyfile containing metadata for all files in the filesystem,
+/// formatted according to the Sleuth Kit bodyfile format. This format is
+/// commonly used in digital forensics for timeline analysis.
+/// 
+/// # Arguments
+/// 
+/// * `output_path` - Path where the bodyfile will be written
+/// * `options` - HashMap of options controlling bodyfile generation:
+///   - `"bodyfile_calculate_hash"` - Calculate SHA256 hashes ("true"/"false")
+///   - `"max_file_size_mb"` - Maximum file size for hashing (in MB)
+/// 
+/// # Returns
+/// 
+/// * `Ok(())` - If bodyfile generation succeeds
+/// * `Err` - If file creation or filesystem traversal fails
+/// 
+/// # Bodyfile Format
+/// 
+/// Each line follows the format:
+/// `MD5|name|inode|mode|UID|GID|size|atime|mtime|ctime|crtime`
 pub fn generate_bodyfile(output_path: &Path, options: &HashMap<String, String>) -> Result<()> {
     info!("Generating bodyfile at {}", output_path.display());
     
@@ -366,4 +392,284 @@ pub fn generate_limited_bodyfile_with_options(
     
     info!("Limited bodyfile generation complete: {} entries", count.load(Ordering::SeqCst));
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use tempfile::{TempDir, NamedTempFile};
+
+    #[test]
+    fn test_unix_to_iso8601() {
+        // Test valid timestamp
+        let timestamp = 1609459200; // 2021-01-01 00:00:00 UTC
+        let result = unix_to_iso8601(timestamp);
+        assert!(result.starts_with("2021-01-01T00:00:00"));
+        
+        // Test zero timestamp
+        let result = unix_to_iso8601(0);
+        assert!(result.starts_with("1970-01-01T00:00:00"));
+        
+        // Test invalid timestamp (too large)
+        let result = unix_to_iso8601(u64::MAX);
+        assert_eq!(result, "0000-00-00T00:00:00Z");
+    }
+
+    #[test]
+    fn test_get_mode_string() {
+        let temp_dir = TempDir::new().unwrap();
+        
+        // Test regular file with 644 permissions
+        let file_path = temp_dir.path().join("test.txt");
+        fs::write(&file_path, b"test").unwrap();
+        fs::set_permissions(&file_path, fs::Permissions::from_mode(0o644)).unwrap();
+        
+        let metadata = fs::metadata(&file_path).unwrap();
+        let mode_str = get_mode_string(&metadata);
+        assert_eq!(mode_str, "-/rw-r--r--");
+        
+        // Test directory with 755 permissions
+        let dir_path = temp_dir.path().join("testdir");
+        fs::create_dir(&dir_path).unwrap();
+        fs::set_permissions(&dir_path, fs::Permissions::from_mode(0o755)).unwrap();
+        
+        let metadata = fs::metadata(&dir_path).unwrap();
+        let mode_str = get_mode_string(&metadata);
+        assert_eq!(mode_str, "d/rwxr-xr-x");
+        
+        // Test executable file with 755 permissions
+        let exec_path = temp_dir.path().join("test.sh");
+        fs::write(&exec_path, b"#!/bin/bash").unwrap();
+        fs::set_permissions(&exec_path, fs::Permissions::from_mode(0o755)).unwrap();
+        
+        let metadata = fs::metadata(&exec_path).unwrap();
+        let mode_str = get_mode_string(&metadata);
+        assert_eq!(mode_str, "-/rwxr-xr-x");
+    }
+
+    #[test]
+    fn test_create_bodyfile_line_advanced() {
+        let temp_file = NamedTempFile::new().unwrap();
+        fs::write(temp_file.path(), b"test content").unwrap();
+        
+        // Test without hash calculation
+        let line = create_bodyfile_line_advanced(
+            temp_file.path(),
+            false,
+            100,
+            false
+        );
+        
+        assert!(line.is_some());
+        let line = line.unwrap();
+        
+        // Verify line format
+        let parts: Vec<&str> = line.split('|').collect();
+        assert_eq!(parts.len(), 11);
+        assert_eq!(parts[0], "0"); // No hash calculated
+        assert!(parts[1].contains(temp_file.path().file_name().unwrap().to_str().unwrap()));
+        assert_eq!(parts[6], "12"); // File size
+        
+        // Test with hash calculation
+        let line = create_bodyfile_line_advanced(
+            temp_file.path(),
+            true,
+            100,
+            false
+        );
+        
+        assert!(line.is_some());
+        let line = line.unwrap();
+        let parts: Vec<&str> = line.split('|').collect();
+        assert_ne!(parts[0], "0"); // Hash should be calculated
+        assert_eq!(parts[0].len(), 64); // SHA256 hash length
+        
+        // Test with ISO8601 timestamps
+        let line = create_bodyfile_line_advanced(
+            temp_file.path(),
+            false,
+            100,
+            true
+        );
+        
+        assert!(line.is_some());
+        let line = line.unwrap();
+        let parts: Vec<&str> = line.split('|').collect();
+        assert!(parts[7].contains("T")); // ISO8601 format contains 'T'
+        assert!(parts[8].contains("T"));
+        assert!(parts[9].contains("T"));
+    }
+
+    #[test]
+    fn test_create_bodyfile_line_nonexistent_file() {
+        let path = Path::new("/nonexistent/file.txt");
+        let line = create_bodyfile_line_advanced(path, false, 100, false);
+        assert!(line.is_none());
+    }
+
+    #[test]
+    fn test_generate_limited_bodyfile() {
+        let temp_dir = TempDir::new().unwrap();
+        let output_path = temp_dir.path().join("bodyfile.txt");
+        
+        // Create a test directory structure
+        let test_dir = temp_dir.path().join("test");
+        fs::create_dir(&test_dir).unwrap();
+        fs::write(test_dir.join("file1.txt"), b"content1").unwrap();
+        fs::write(test_dir.join("file2.txt"), b"content2").unwrap();
+        
+        let subdir = test_dir.join("subdir");
+        fs::create_dir(&subdir).unwrap();
+        fs::write(subdir.join("file3.txt"), b"content3").unwrap();
+        
+        // Generate bodyfile
+        let result = generate_limited_bodyfile(&output_path, &test_dir);
+        assert!(result.is_ok());
+        
+        // Verify output file exists and contains data
+        assert!(output_path.exists());
+        let content = fs::read_to_string(&output_path).unwrap();
+        let lines: Vec<&str> = content.lines().collect();
+        
+        // Should have header + 4 entries (1 dir + 3 files + 1 subdir)
+        assert!(lines.len() >= 5);
+        assert!(lines[0].starts_with("# SHA256"));
+        
+        // Check that file entries are present
+        assert!(content.contains("file1.txt"));
+        assert!(content.contains("file2.txt"));
+        assert!(content.contains("file3.txt"));
+        assert!(content.contains("subdir"));
+    }
+
+    #[test]
+    fn test_generate_limited_bodyfile_with_options() {
+        let temp_dir = TempDir::new().unwrap();
+        let output_path = temp_dir.path().join("bodyfile_with_hash.txt");
+        
+        // Create test files
+        let test_dir = temp_dir.path().join("test");
+        fs::create_dir(&test_dir).unwrap();
+        fs::write(test_dir.join("small.txt"), b"small content").unwrap();
+        
+        // Create options with hash calculation enabled
+        let mut options = HashMap::new();
+        options.insert("bodyfile_calculate_hash".to_string(), "true".to_string());
+        options.insert("bodyfile_hash_max_size_mb".to_string(), "1".to_string());
+        options.insert("bodyfile_use_iso8601".to_string(), "true".to_string());
+        
+        // Generate bodyfile
+        let result = generate_limited_bodyfile_with_options(&output_path, &test_dir, &options);
+        assert!(result.is_ok());
+        
+        // Verify output
+        let content = fs::read_to_string(&output_path).unwrap();
+        let lines: Vec<&str> = content.lines().collect();
+        
+        // Find the line for small.txt
+        let small_line = lines.iter()
+            .find(|line| line.contains("small.txt"))
+            .expect("small.txt not found in bodyfile");
+        
+        let parts: Vec<&str> = small_line.split('|').collect();
+        
+        // Should have hash calculated (not "0")
+        assert_ne!(parts[0], "0");
+        assert_eq!(parts[0].len(), 64); // SHA256 hash
+        
+        // Should use ISO8601 timestamps
+        assert!(parts[7].contains("T"));
+    }
+
+    #[test]
+    fn test_generate_bodyfile_large_file_hash_skip() {
+        let temp_dir = TempDir::new().unwrap();
+        let output_path = temp_dir.path().join("bodyfile_large.txt");
+        
+        // Create a large file (2MB)
+        let test_dir = temp_dir.path().join("test");
+        fs::create_dir(&test_dir).unwrap();
+        let large_file = test_dir.join("large.bin");
+        let large_data = vec![0u8; 2 * 1024 * 1024];
+        fs::write(&large_file, &large_data).unwrap();
+        
+        // Create options with 1MB hash limit
+        let mut options = HashMap::new();
+        options.insert("bodyfile_calculate_hash".to_string(), "true".to_string());
+        options.insert("bodyfile_hash_max_size_mb".to_string(), "1".to_string());
+        
+        // Generate bodyfile
+        let result = generate_limited_bodyfile_with_options(&output_path, &test_dir, &options);
+        assert!(result.is_ok());
+        
+        // Verify that large file has hash "0" (skipped)
+        let content = fs::read_to_string(&output_path).unwrap();
+        let lines: Vec<&str> = content.lines().collect();
+        
+        let large_line = lines.iter()
+            .find(|line| line.contains("large.bin"))
+            .expect("large.bin not found in bodyfile");
+        
+        let parts: Vec<&str> = large_line.split('|').collect();
+        assert_eq!(parts[0], "0"); // Hash should be skipped
+    }
+
+    #[test]
+    fn test_platform_specific_times() {
+        let temp_file = NamedTempFile::new().unwrap();
+        fs::write(temp_file.path(), b"test").unwrap();
+        
+        let metadata = fs::metadata(temp_file.path()).unwrap();
+        let (ctime, crtime) = get_platform_specific_times(&metadata);
+        
+        // ctime should be non-zero on Unix platforms
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        assert!(ctime > 0);
+        
+        // crtime behavior varies by platform
+        #[cfg(target_os = "linux")]
+        assert_eq!(crtime, 0); // Linux doesn't track creation time
+        
+        #[cfg(target_os = "macos")]
+        assert!(crtime >= 0); // macOS may have creation time
+    }
+
+    #[test]
+    fn test_bodyfile_permissions() {
+        let temp_dir = TempDir::new().unwrap();
+        let output_path = temp_dir.path().join("bodyfile_perms.txt");
+        
+        // Create files with different permissions
+        let test_dir = temp_dir.path().join("test");
+        fs::create_dir(&test_dir).unwrap();
+        
+        let file_400 = test_dir.join("readonly.txt");
+        fs::write(&file_400, b"readonly").unwrap();
+        fs::set_permissions(&file_400, fs::Permissions::from_mode(0o400)).unwrap();
+        
+        let file_666 = test_dir.join("readwrite.txt");
+        fs::write(&file_666, b"readwrite").unwrap();
+        fs::set_permissions(&file_666, fs::Permissions::from_mode(0o666)).unwrap();
+        
+        // Generate bodyfile
+        let result = generate_limited_bodyfile(&output_path, &test_dir);
+        assert!(result.is_ok());
+        
+        // Verify permissions in output
+        let content = fs::read_to_string(&output_path).unwrap();
+        
+        // Check readonly file
+        let readonly_line = content.lines()
+            .find(|line| line.contains("readonly.txt"))
+            .expect("readonly.txt not found");
+        assert!(readonly_line.contains("-/r--------"));
+        
+        // Check readwrite file
+        let readwrite_line = content.lines()
+            .find(|line| line.contains("readwrite.txt"))
+            .expect("readwrite.txt not found");
+        assert!(readwrite_line.contains("-/rw-rw-rw-"));
+    }
 }

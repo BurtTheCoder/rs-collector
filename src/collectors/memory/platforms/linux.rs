@@ -15,6 +15,7 @@ use crate::collectors::memory::models::{
 };
 use crate::collectors::memory::platforms::MemoryCollectorImpl;
 use crate::collectors::volatile::models::ProcessInfo;
+use crate::constants::{MEMORY_CHUNK_SIZE, PROC_PATH};
 
 /// Linux memory collector implementation
 pub struct LinuxMemoryCollector {
@@ -70,7 +71,7 @@ impl LinuxMemoryCollector {
     
     /// Read large memory regions in chunks to avoid allocation issues
     fn read_large_memory(&self, pid: u32, address: u64, size: usize) -> Result<Vec<u8>> {
-        const CHUNK_SIZE: usize = 1024 * 1024; // 1MB chunks
+        const CHUNK_SIZE: usize = MEMORY_CHUNK_SIZE;
         let mut result = Vec::with_capacity(size);
         let mut failures = 0;
         

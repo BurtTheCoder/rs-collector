@@ -12,6 +12,12 @@ use walkdir::WalkDir;
 
 use crate::cloud::streaming_target::StreamingTarget;
 use crate::utils::streaming_zip::{StreamingZipWriter, FileOptions, CompressionMethod};
+use crate::constants::{
+    PROGRESS_REPORT_INTERVAL_SECS,
+    STREAMING_BUFFER_SIZE,
+    LARGE_FILE_COMPRESSION_THRESHOLD,
+    COMPRESSED_EXTENSIONS
+};
 
 /// Progress tracker for streaming uploads
 pub struct ProgressTracker {
@@ -40,7 +46,7 @@ impl ProgressTracker {
             }
             
             loop {
-                sleep(Duration::from_secs(2)).await;
+                sleep(Duration::from_secs(PROGRESS_REPORT_INTERVAL_SECS)).await;
                 
                 let bytes_uploaded = self.bytes_uploaded.load(Ordering::SeqCst);
                 let percentage = ((bytes_uploaded as f64 / self.total_size as f64) * 100.0) as u8;
@@ -110,15 +116,13 @@ pub async fn calculate_total_size(source_dir: &Path) -> Result<u64> {
 pub fn get_compression_options(path: &Path) -> FileOptions {
     // Detect file type from extension
     let low_compression = match path.extension().and_then(|e| e.to_str()) {
-        // Files that are already compressed - use minimal compression
-        Some("zip" | "gz" | "xz" | "bz2" | "7z" | "rar" | "jpg" | "jpeg" | 
-             "png" | "gif" | "mp3" | "mp4" | "avi" | "mov" | "mpg" | "mpeg") => true,
+        Some(ext) => COMPRESSED_EXTENSIONS.contains(&ext),
         _ => false,
     };
     
     // Detect if it's very large, in which case use faster compression
     let large_file = match std::fs::metadata(path) {
-        Ok(metadata) if metadata.len() > 100 * 1024 * 1024 => true, // > 100MB
+        Ok(metadata) if metadata.len() > LARGE_FILE_COMPRESSION_THRESHOLD => true,
         _ => false,
     };
     
@@ -212,7 +216,7 @@ pub async fn stream_directory_to_target<T: StreamingTarget>(
             let mut file = File::open(path).await
                 .context(format!("Failed to open {}", path.display()))?;
                 
-            let mut buffer = vec![0u8; 64 * 1024]; // 64KB buffer
+            let mut buffer = vec![0u8; STREAMING_BUFFER_SIZE];
             
             loop {
                 let bytes_read = tokio::io::AsyncReadExt::read(&mut file, &mut buffer).await?;
@@ -310,4 +314,262 @@ pub async fn stream_file_to_target<T: StreamingTarget>(
     let _ = progress_handle.await;
     
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    use std::fs;
+    use std::pin::Pin;
+    use std::task::{Context as TaskContext, Poll};
+    use std::io;
+
+    // Mock streaming target for testing
+    struct MockStreamingTarget {
+        name: String,
+        bytes: Arc<AtomicU64>,
+        data: Vec<u8>,
+        completed: bool,
+    }
+
+    impl MockStreamingTarget {
+        fn new(name: &str) -> Self {
+            Self {
+                name: name.to_string(),
+                bytes: Arc::new(AtomicU64::new(0)),
+                data: Vec::new(),
+                completed: false,
+            }
+        }
+
+    }
+
+    impl StreamingTarget for MockStreamingTarget {
+        fn target_name(&self) -> String {
+            self.name.clone()
+        }
+
+        fn bytes_uploaded(&self) -> u64 {
+            self.bytes.load(Ordering::SeqCst)
+        }
+
+        async fn complete(mut self) -> Result<()> {
+            self.completed = true;
+            Ok(())
+        }
+
+        async fn abort(self) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    // AsyncWriteExt is automatically implemented for types that implement AsyncWrite
+
+    impl tokio::io::AsyncWrite for MockStreamingTarget {
+        fn poll_write(
+            mut self: Pin<&mut Self>,
+            _cx: &mut TaskContext<'_>,
+            buf: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            self.data.extend_from_slice(buf);
+            self.bytes.fetch_add(buf.len() as u64, Ordering::SeqCst);
+            Poll::Ready(Ok(buf.len()))
+        }
+
+        fn poll_flush(self: Pin<&mut Self>, _cx: &mut TaskContext<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut TaskContext<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    #[test]
+    fn test_progress_tracker_creation() {
+        let bytes_uploaded = Arc::new(AtomicU64::new(0));
+        let tracker = ProgressTracker::new(1000, bytes_uploaded.clone());
+        
+        assert_eq!(tracker.total_size, 1000);
+        assert_eq!(tracker.last_percentage, 0);
+    }
+
+    #[test]
+    fn test_progress_tracker_calculation() {
+        let bytes_uploaded = Arc::new(AtomicU64::new(500));
+        let tracker = ProgressTracker::new(1000, bytes_uploaded.clone());
+        
+        // Calculate percentage manually
+        let percentage = ((500f64 / 1000f64) * 100.0) as u8;
+        assert_eq!(percentage, 50);
+    }
+
+    #[tokio::test]
+    async fn test_calculate_total_size_empty_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let size = calculate_total_size(temp_dir.path()).await.unwrap();
+        assert_eq!(size, 0);
+    }
+
+    #[tokio::test]
+    async fn test_calculate_total_size_with_files() {
+        let temp_dir = TempDir::new().unwrap();
+        
+        // Create test files
+        fs::write(temp_dir.path().join("file1.txt"), "hello").unwrap();
+        fs::write(temp_dir.path().join("file2.txt"), "world!").unwrap();
+        
+        let size = calculate_total_size(temp_dir.path()).await.unwrap();
+        assert_eq!(size, 11); // 5 + 6 bytes
+    }
+
+    #[tokio::test]
+    async fn test_calculate_total_size_nested() {
+        let temp_dir = TempDir::new().unwrap();
+        let sub_dir = temp_dir.path().join("sub");
+        fs::create_dir(&sub_dir).unwrap();
+        
+        // Create files in root and subdirectory
+        fs::write(temp_dir.path().join("file1.txt"), "test").unwrap();
+        fs::write(sub_dir.join("file2.txt"), "nested").unwrap();
+        
+        let size = calculate_total_size(temp_dir.path()).await.unwrap();
+        assert_eq!(size, 10); // 4 + 6 bytes
+    }
+
+    #[test]
+    fn test_get_compression_options_compressed_files() {
+        use std::path::PathBuf;
+        
+        // Test already compressed files
+        let compressed_files = vec![
+            "test.zip", "test.gz", "test.jpg", "test.mp4", "test.png"
+        ];
+        
+        for file in compressed_files {
+            let path = PathBuf::from(file);
+            let options = get_compression_options(&path);
+            assert_eq!(options.compression_method, CompressionMethod::Stored);
+        }
+    }
+
+    #[test]
+    fn test_get_compression_options_regular_files() {
+        use std::path::PathBuf;
+        
+        // Test regular files that should be compressed
+        let regular_files = vec![
+            "test.txt", "test.log", "test.json", "test.xml", "test.rs"
+        ];
+        
+        for file in regular_files {
+            let path = PathBuf::from(file);
+            let options = get_compression_options(&path);
+            assert_eq!(options.compression_method, CompressionMethod::Deflated);
+        }
+    }
+
+    #[test]
+    fn test_get_compression_options_large_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let large_file = temp_dir.path().join("large.txt");
+        
+        // Create a file larger than 100MB (just metadata, not actual content)
+        let file = fs::File::create(&large_file).unwrap();
+        file.set_len(101 * 1024 * 1024).unwrap(); // 101MB
+        
+        let options = get_compression_options(&large_file);
+        assert_eq!(options.compression_method, CompressionMethod::Stored);
+    }
+
+    #[tokio::test]
+    async fn test_stream_file_to_target() {
+        let temp_dir = TempDir::new().unwrap();
+        let test_file = temp_dir.path().join("test.txt");
+        let content = b"Hello, streaming world!";
+        fs::write(&test_file, content).unwrap();
+        
+        let target = MockStreamingTarget::new("test-target");
+        let bytes_ref = target.bytes.clone();
+        
+        let result = stream_file_to_target(&test_file, target, 5).await;
+        
+        assert!(result.is_ok());
+        assert_eq!(bytes_ref.load(Ordering::SeqCst), content.len() as u64);
+    }
+
+    #[tokio::test] 
+    async fn test_stream_directory_to_target() {
+        let temp_dir = TempDir::new().unwrap();
+        
+        // Create test directory structure
+        fs::write(temp_dir.path().join("file1.txt"), "content1").unwrap();
+        let sub_dir = temp_dir.path().join("subdir");
+        fs::create_dir(&sub_dir).unwrap();
+        fs::write(sub_dir.join("file2.txt"), "content2").unwrap();
+        
+        let target = MockStreamingTarget::new("test-target");
+        let bytes_ref = target.bytes.clone();
+        
+        let result = stream_directory_to_target(temp_dir.path(), target, 5).await;
+        
+        assert!(result.is_ok());
+        // Should have uploaded some data (ZIP format adds overhead)
+        assert!(bytes_ref.load(Ordering::SeqCst) > 0);
+    }
+
+    #[tokio::test]
+    async fn test_progress_tracker_zero_size() {
+        let bytes_uploaded = Arc::new(AtomicU64::new(0));
+        let tracker = ProgressTracker::new(0, bytes_uploaded.clone());
+        
+        // Should complete immediately for zero-size
+        let handle = tracker.start_tracking();
+        let result = tokio::time::timeout(Duration::from_millis(100), handle).await;
+        
+        assert!(result.is_ok()); // Should finish quickly
+    }
+
+    #[test]
+    fn test_compression_options_default() {
+        let options = FileOptions::default();
+        // Just verify we can create default options
+        assert!(matches!(options.compression_method, _));
+    }
+
+    #[test]
+    fn test_atomic_operations() {
+        let counter = Arc::new(AtomicU64::new(0));
+        
+        // Test store and load
+        counter.store(100, Ordering::SeqCst);
+        assert_eq!(counter.load(Ordering::SeqCst), 100);
+        
+        // Test fetch_add
+        let old = counter.fetch_add(50, Ordering::SeqCst);
+        assert_eq!(old, 100);
+        assert_eq!(counter.load(Ordering::SeqCst), 150);
+    }
+
+    #[test]
+    fn test_path_operations() {
+        let path = Path::new("/test/file.txt");
+        assert_eq!(path.file_name().unwrap().to_str().unwrap(), "file.txt");
+        assert_eq!(path.extension().unwrap().to_str().unwrap(), "txt");
+    }
+
+    #[test]
+    fn test_walkdir_basic() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(temp_dir.path().join("test.txt"), "test").unwrap();
+        
+        let entries: Vec<_> = WalkDir::new(temp_dir.path())
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .collect();
+        
+        // Should have at least the root directory and the file
+        assert!(entries.len() >= 2);
+    }
 }

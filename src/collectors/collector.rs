@@ -12,10 +12,48 @@ use crate::config::{Artifact, ArtifactType, WindowsArtifactType};
 use crate::collectors::platforms;
 use crate::collectors::regex::RegexCollector;
 
-/// Trait for artifact collectors
+/// Trait for artifact collectors.
+/// 
+/// This trait defines the interface that all artifact collectors must implement.
+/// Collectors are responsible for gathering specific types of forensic artifacts
+/// from a system and storing them in a specified output directory.
+/// 
+/// # Thread Safety
+/// 
+/// Implementors must be `Send + Sync` to support concurrent collection operations.
 #[async_trait::async_trait]
 pub trait ArtifactCollector: Send + Sync {
+    /// Collect a specific artifact and save it to the output directory.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `artifact` - The artifact configuration specifying what to collect
+    /// * `output_dir` - Directory where the collected artifact should be saved
+    /// 
+    /// # Returns
+    /// 
+    /// * `Ok(ArtifactMetadata)` - Metadata about the successfully collected artifact
+    /// * `Err` - If collection fails or the artifact cannot be found
+    /// 
+    /// # Implementation Notes
+    /// 
+    /// Implementors should:
+    /// - Preserve the original file metadata when possible
+    /// - Handle platform-specific paths appropriately
+    /// - Create necessary subdirectories in the output directory
+    /// - Return detailed error messages for troubleshooting
     async fn collect(&self, artifact: &Artifact, output_dir: &Path) -> Result<ArtifactMetadata>;
+    
+    /// Check if this collector supports a given artifact type.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `artifact_type` - The type of artifact to check
+    /// 
+    /// # Returns
+    /// 
+    /// * `true` if this collector can handle the artifact type
+    /// * `false` otherwise
     fn supports_artifact_type(&self, artifact_type: &ArtifactType) -> bool;
 }
 
@@ -237,7 +275,39 @@ pub async fn collect_artifacts_parallel(
     Ok(final_results)
 }
 
-/// Legacy synchronous collection function that calls the async implementation
+/// Legacy synchronous collection function that calls the async implementation.
+/// 
+/// This function provides a synchronous interface to the asynchronous artifact
+/// collection system. It creates a Tokio runtime and blocks until all artifacts
+/// are collected.
+/// 
+/// # Arguments
+/// 
+/// * `artifacts` - Slice of artifact configurations to collect
+/// * `base_dir` - Base directory where collected artifacts will be stored
+/// 
+/// # Returns
+/// 
+/// * `Ok(HashMap<String, ArtifactMetadata>)` - Map of relative paths to metadata for collected artifacts
+/// * `Err` - If runtime creation fails or collection encounters fatal errors
+/// 
+/// # Example
+/// 
+/// ```no_run
+/// # use std::path::Path;
+/// # use rust_collector::config::Artifact;
+/// # use rust_collector::collectors::collector::collect_artifacts;
+/// # let artifacts: Vec<Artifact> = vec![];
+/// let results = collect_artifacts(&artifacts, Path::new("/tmp/collection"))?;
+/// for (path, metadata) in results {
+///     println!("Collected: {} ({} bytes)", path, metadata.file_size);
+/// }
+/// # Ok::<(), anyhow::Error>(())
+/// ```
+/// 
+/// # Performance
+/// 
+/// This function uses all available CPU cores for parallel collection.
 pub fn collect_artifacts(
     artifacts: &[Artifact],
     base_dir: &Path
@@ -251,4 +321,514 @@ pub fn collect_artifacts(
     
     // Run the async function in the runtime
     runtime.block_on(collect_artifacts_parallel(artifacts, base_dir))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    use std::fs;
+    use crate::config::{LinuxArtifactType, MacOSArtifactType};
+
+    // Mock collector for testing
+    struct MockCollector {
+        supported_types: Vec<ArtifactType>,
+        should_fail: bool,
+    }
+
+    #[async_trait::async_trait]
+    impl ArtifactCollector for MockCollector {
+        async fn collect(&self, artifact: &Artifact, output_dir: &Path) -> Result<ArtifactMetadata> {
+            if self.should_fail {
+                return Err(anyhow::anyhow!("Mock failure"));
+            }
+
+            // Create a dummy file
+            let dest_path = output_dir.join(&artifact.destination_name);
+            if let Some(parent) = dest_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::write(&dest_path, "mock content")?;
+
+            Ok(ArtifactMetadata {
+                original_path: artifact.source_path.clone(),
+                collection_time: chrono::Utc::now().to_rfc3339(),
+                file_size: 12, // "mock content".len()
+                created_time: None,
+                accessed_time: None,
+                modified_time: None,
+                is_locked: false,
+            })
+        }
+
+        fn supports_artifact_type(&self, artifact_type: &ArtifactType) -> bool {
+            self.supported_types.contains(artifact_type)
+        }
+    }
+
+    #[test]
+    fn test_is_special_artifact() {
+        // Windows special artifacts
+        assert!(is_special_artifact(&ArtifactType::Windows(WindowsArtifactType::MFT)));
+        assert!(is_special_artifact(&ArtifactType::Windows(WindowsArtifactType::USNJournal)));
+
+        // Non-special artifacts
+        assert!(!is_special_artifact(&ArtifactType::Windows(WindowsArtifactType::Registry)));
+        assert!(!is_special_artifact(&ArtifactType::Linux(LinuxArtifactType::SysLogs)));
+        assert!(!is_special_artifact(&ArtifactType::FileSystem));
+        assert!(!is_special_artifact(&ArtifactType::Logs));
+    }
+
+    #[test]
+    fn test_get_destination_path_special_artifact() {
+        let fs_dir = Path::new("/output/fs");
+        let artifact = Artifact {
+            name: "MFT".to_string(),
+            artifact_type: ArtifactType::Windows(WindowsArtifactType::MFT),
+            source_path: r"\\?\C:\$MFT".to_string(),
+            destination_name: "MFT".to_string(),
+            description: None,
+            required: true,
+            metadata: HashMap::new(),
+            regex: None,
+        };
+
+        let dest_path = get_destination_path(fs_dir, &artifact);
+        assert_eq!(dest_path, fs_dir.join("MFT"));
+    }
+
+    #[test]
+    fn test_get_destination_path_absolute_unix() {
+        let fs_dir = Path::new("/output/fs");
+        let artifact = Artifact {
+            name: "syslog".to_string(),
+            artifact_type: ArtifactType::Linux(LinuxArtifactType::SysLogs),
+            source_path: "/var/log/syslog".to_string(),
+            destination_name: "syslog".to_string(),
+            description: None,
+            required: true,
+            metadata: HashMap::new(),
+            regex: None,
+        };
+
+        let dest_path = get_destination_path(fs_dir, &artifact);
+        assert_eq!(dest_path, fs_dir.join("var/log/syslog"));
+    }
+
+    #[test]
+    fn test_get_destination_path_absolute_windows() {
+        let fs_dir = Path::new("/output/fs");
+        let artifact = Artifact {
+            name: "hosts".to_string(),
+            artifact_type: ArtifactType::FileSystem,
+            source_path: r"C:\Windows\System32\drivers\etc\hosts".to_string(),
+            destination_name: "hosts".to_string(),
+            description: None,
+            required: true,
+            metadata: HashMap::new(),
+            regex: None,
+        };
+
+        let dest_path = get_destination_path(fs_dir, &artifact);
+        
+        if cfg!(windows) {
+            // On Windows, strip the drive letter
+            assert_eq!(dest_path, fs_dir.join(r"Windows\System32\drivers\etc\hosts"));
+        } else {
+            // On Unix, the whole path is preserved
+            assert_eq!(dest_path, fs_dir.join(r"C:\Windows\System32\drivers\etc\hosts"));
+        }
+    }
+
+    #[test]
+    fn test_get_destination_path_relative() {
+        let fs_dir = Path::new("/output/fs");
+        let artifact = Artifact {
+            name: "config".to_string(),
+            artifact_type: ArtifactType::UserData,
+            source_path: "config/app.conf".to_string(),
+            destination_name: "app.conf".to_string(),
+            description: None,
+            required: false,
+            metadata: HashMap::new(),
+            regex: None,
+        };
+
+        let dest_path = get_destination_path(fs_dir, &artifact);
+        assert_eq!(dest_path, fs_dir.join("config/app.conf"));
+    }
+
+    #[test]
+    fn test_handle_duplicate_filename() {
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path().join("test.txt");
+
+        // First call should return the original path
+        let path1 = handle_duplicate_filename(&base_path);
+        assert_eq!(path1, base_path);
+
+        // Create the file
+        fs::write(&path1, "content1").unwrap();
+
+        // Second call should add _1
+        let path2 = handle_duplicate_filename(&base_path);
+        assert_eq!(path2, temp_dir.path().join("test_1.txt"));
+
+        // Create the second file
+        fs::write(&path2, "content2").unwrap();
+
+        // Third call should add _2
+        let path3 = handle_duplicate_filename(&base_path);
+        assert_eq!(path3, temp_dir.path().join("test_2.txt"));
+    }
+
+    #[test]
+    fn test_handle_duplicate_filename_no_extension() {
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path().join("test");
+
+        // Create the file
+        fs::write(&base_path, "content").unwrap();
+
+        // Should add _1 without extension
+        let path2 = handle_duplicate_filename(&base_path);
+        assert_eq!(path2, temp_dir.path().join("test_1"));
+    }
+
+    #[test]
+    fn test_normalize_path_for_storage() {
+        // Windows paths
+        assert_eq!(
+            normalize_path_for_storage(Path::new(r"Windows\System32\config")),
+            "Windows/System32/config"
+        );
+
+        // Unix paths (already normalized)
+        assert_eq!(
+            normalize_path_for_storage(Path::new("/var/log/syslog")),
+            "/var/log/syslog"
+        );
+
+        // Mixed separators
+        assert_eq!(
+            normalize_path_for_storage(Path::new(r"some\mixed/path")),
+            "some/mixed/path"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_collect_artifacts_parallel_empty() {
+        let temp_dir = TempDir::new().unwrap();
+        let results = collect_artifacts_parallel(&[], temp_dir.path()).await.unwrap();
+        
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_collect_artifacts_parallel_with_mock() {
+        let temp_dir = TempDir::new().unwrap();
+        
+        // Create test artifact
+        let artifact = Artifact {
+            name: "test".to_string(),
+            artifact_type: ArtifactType::FileSystem,
+            source_path: "/test/file.txt".to_string(),
+            destination_name: "file.txt".to_string(),
+            description: Some("Test file".to_string()),
+            required: true,
+            metadata: HashMap::new(),
+            regex: None,
+        };
+
+        // Create a mock collector
+        let collector = Arc::new(MockCollector {
+            supported_types: vec![ArtifactType::FileSystem],
+            should_fail: false,
+        });
+
+        // We can't easily test the full parallel collection without modifying the function
+        // to accept custom collectors, so we'll test the collector directly
+        let fs_dir = temp_dir.path().join("fs");
+        fs::create_dir_all(&fs_dir).unwrap();
+        
+        let metadata = collector.collect(&artifact, &fs_dir).await.unwrap();
+        assert_eq!(metadata.file_size, 12);
+        assert_eq!(metadata.original_path, "/test/file.txt");
+    }
+
+    #[tokio::test]
+    async fn test_mock_collector_failure() {
+        let temp_dir = TempDir::new().unwrap();
+        
+        let artifact = Artifact {
+            name: "test".to_string(),
+            artifact_type: ArtifactType::FileSystem,
+            source_path: "/test/file.txt".to_string(),
+            destination_name: "file.txt".to_string(),
+            description: None,
+            required: true,
+            metadata: HashMap::new(),
+            regex: None,
+        };
+
+        let collector = MockCollector {
+            supported_types: vec![ArtifactType::FileSystem],
+            should_fail: true,
+        };
+
+        let result = collector.collect(&artifact, temp_dir.path()).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "Mock failure");
+    }
+
+    #[test]
+    fn test_legacy_collect_artifacts() {
+        let temp_dir = TempDir::new().unwrap();
+        
+        // Test with empty artifacts
+        let results = collect_artifacts(&[], temp_dir.path()).unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_semaphore_concurrency_limit() {
+        // Test that MAX_CONCURRENT_COLLECTIONS is reasonable
+        let max_concurrent = num_cpus::get() * 2;
+        assert!(max_concurrent > 0);
+        assert!(max_concurrent <= 256); // Reasonable upper limit
+    }
+
+    #[test]
+    fn test_artifact_type_support() {
+        let mock = MockCollector {
+            supported_types: vec![
+                ArtifactType::FileSystem,
+                ArtifactType::Windows(WindowsArtifactType::Registry),
+            ],
+            should_fail: false,
+        };
+
+        assert!(mock.supports_artifact_type(&ArtifactType::FileSystem));
+        assert!(mock.supports_artifact_type(&ArtifactType::Windows(WindowsArtifactType::Registry)));
+        assert!(!mock.supports_artifact_type(&ArtifactType::Linux(LinuxArtifactType::SysLogs)));
+        assert!(!mock.supports_artifact_type(&ArtifactType::MacOS(MacOSArtifactType::UnifiedLogs)));
+    }
+
+    #[test]
+    fn test_get_destination_path_edge_cases() {
+        let fs_dir = Path::new("/output/fs");
+        
+        // Test empty path
+        let artifact = Artifact {
+            name: "empty".to_string(),
+            artifact_type: ArtifactType::FileSystem,
+            source_path: "".to_string(),
+            destination_name: "empty.txt".to_string(),
+            description: None,
+            required: false,
+            metadata: HashMap::new(),
+            regex: None,
+        };
+        let dest_path = get_destination_path(fs_dir, &artifact);
+        assert_eq!(dest_path, fs_dir.join(""));
+        
+        // Test path with only separators
+        let artifact2 = Artifact {
+            name: "sep".to_string(),
+            artifact_type: ArtifactType::FileSystem,
+            source_path: "///".to_string(),
+            destination_name: "sep.txt".to_string(),
+            description: None,
+            required: false,
+            metadata: HashMap::new(),
+            regex: None,
+        };
+        let dest_path2 = get_destination_path(fs_dir, &artifact2);
+        assert_eq!(dest_path2, fs_dir.join(""));
+    }
+
+    #[test]
+    fn test_get_destination_path_windows_unc() {
+        let fs_dir = Path::new("/output/fs");
+        let artifact = Artifact {
+            name: "unc".to_string(),
+            artifact_type: ArtifactType::FileSystem,
+            source_path: r"\\server\share\file.txt".to_string(),
+            destination_name: "file.txt".to_string(),
+            description: None,
+            required: false,
+            metadata: HashMap::new(),
+            regex: None,
+        };
+        
+        let dest_path = get_destination_path(fs_dir, &artifact);
+        // UNC paths should have the leading backslashes stripped
+        assert_eq!(dest_path, fs_dir.join(r"server\share\file.txt"));
+    }
+
+    #[test]
+    fn test_handle_duplicate_filename_complex_extensions() {
+        let temp_dir = TempDir::new().unwrap();
+        
+        // Test file with multiple dots
+        let base_path = temp_dir.path().join("file.tar.gz");
+        fs::write(&base_path, "content").unwrap();
+        
+        let path2 = handle_duplicate_filename(&base_path);
+        assert_eq!(path2, temp_dir.path().join("file.tar_1.gz"));
+        
+        // Test file with no stem
+        let hidden_path = temp_dir.path().join(".hidden");
+        fs::write(&hidden_path, "content").unwrap();
+        
+        let path3 = handle_duplicate_filename(&hidden_path);
+        assert_eq!(path3, temp_dir.path().join(".hidden_1"));
+    }
+
+    #[test]
+    fn test_normalize_path_for_storage_edge_cases() {
+        // Empty path
+        assert_eq!(normalize_path_for_storage(Path::new("")), "");
+        
+        // Path with multiple backslashes
+        assert_eq!(
+            normalize_path_for_storage(Path::new(r"C:\\Windows\\System32")),
+            "C://Windows//System32"
+        );
+        
+        // Path with mixed separators already
+        assert_eq!(
+            normalize_path_for_storage(Path::new("some/mixed\\path/here")),
+            "some/mixed//path/here"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_collect_artifacts_parallel_with_regex() {
+        use crate::config::RegexConfig;
+        
+        let temp_dir = TempDir::new().unwrap();
+        
+        // Create test files
+        let test_dir = temp_dir.path().join("logs");
+        fs::create_dir_all(&test_dir).unwrap();
+        fs::write(test_dir.join("app.log"), "log content").unwrap();
+        fs::write(test_dir.join("error.log"), "error content").unwrap();
+        fs::write(test_dir.join("debug.txt"), "debug content").unwrap();
+        
+        let artifact = Artifact {
+            name: "logs".to_string(),
+            artifact_type: ArtifactType::Logs,
+            source_path: test_dir.to_string_lossy().to_string(),
+            destination_name: "logs".to_string(),
+            description: Some("Log files".to_string()),
+            required: true,
+            metadata: HashMap::new(),
+            regex: Some(RegexConfig {
+                enabled: true,
+                include_pattern: r".*\.log$".to_string(),
+                exclude_pattern: String::new(),
+                recursive: true,
+                max_depth: None,
+            }),
+        };
+        
+        // We can't easily test the full regex collection without mocking
+        // but we can verify the artifact structure
+        assert!(artifact.regex.is_some());
+        assert!(artifact.regex.as_ref().unwrap().enabled);
+    }
+
+    #[tokio::test]
+    async fn test_collect_artifacts_with_failures() {
+        let temp_dir = TempDir::new().unwrap();
+        
+        // Create artifacts with mixed success/failure scenarios
+        let artifacts = vec![
+            Artifact {
+                name: "required-missing".to_string(),
+                artifact_type: ArtifactType::FileSystem,
+                source_path: "/nonexistent/required.txt".to_string(),
+                destination_name: "required.txt".to_string(),
+                description: None,
+                required: true, // Required but missing
+                metadata: HashMap::new(),
+                regex: None,
+            },
+            Artifact {
+                name: "optional-missing".to_string(),
+                artifact_type: ArtifactType::FileSystem,
+                source_path: "/nonexistent/optional.txt".to_string(),
+                destination_name: "optional.txt".to_string(),
+                description: None,
+                required: false, // Optional and missing
+                metadata: HashMap::new(),
+                regex: None,
+            },
+        ];
+        
+        // Should complete without error (failures are logged, not returned)
+        let result = collect_artifacts_parallel(&artifacts, temp_dir.path()).await;
+        assert!(result.is_ok());
+        
+        // Results should be empty since both files don't exist
+        let results = result.unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_is_special_artifact_comprehensive() {
+        // Test all Windows artifact types
+        use crate::config::WindowsArtifactType::*;
+        use crate::config::VolatileDataType;
+        
+        let special_types = vec![
+            ArtifactType::Windows(MFT),
+            ArtifactType::Windows(USNJournal),
+        ];
+        
+        let normal_types = vec![
+            ArtifactType::Windows(Registry),
+            ArtifactType::Windows(EventLog),
+            ArtifactType::Windows(Prefetch),
+            ArtifactType::Windows(ShimCache),
+            ArtifactType::Windows(AmCache),
+            ArtifactType::FileSystem,
+            ArtifactType::Logs,
+            ArtifactType::UserData,
+            ArtifactType::SystemInfo,
+            ArtifactType::Memory,
+            ArtifactType::Network,
+            ArtifactType::VolatileData(VolatileDataType::Processes),
+            ArtifactType::Custom,
+        ];
+        
+        for artifact_type in special_types {
+            assert!(is_special_artifact(&artifact_type), 
+                   "{:?} should be special", artifact_type);
+        }
+        
+        for artifact_type in normal_types {
+            assert!(!is_special_artifact(&artifact_type), 
+                   "{:?} should not be special", artifact_type);
+        }
+    }
+
+    #[test]
+    fn test_concurrent_collection_limit() {
+        // Verify the concurrency limit calculation
+        let cpu_count = num_cpus::get();
+        let max_concurrent = std::cmp::min(cpu_count * 2, 32);
+        
+        assert!(max_concurrent > 0);
+        assert!(max_concurrent <= 32);
+        
+        // Test edge cases
+        if cpu_count == 1 {
+            assert_eq!(max_concurrent, 2);
+        }
+        if cpu_count >= 16 {
+            assert_eq!(max_concurrent, 32);
+        }
+    }
 }

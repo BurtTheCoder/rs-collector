@@ -1,0 +1,75 @@
+# cargo-deny configuration for rs-collector
+
+[bans]
+# Warn when multiple versions of the same dependency are used
+multiple-versions = "warn"
+# Allow wildcard dependencies (not recommended for production, but ok for now)
+wildcards = "allow"
+# List of explicitly disallowed crates
+skip = []
+
+[licenses]
+# List of explicitly allowed licenses
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-DFS-2016",
+    "Unlicense",
+    "CC0-1.0",
+]
+
+# List of explicitly disallowed licenses
+deny = [
+    "GPL-2.0",
+    "GPL-3.0",
+    "AGPL-3.0",
+    "LGPL-2.0",
+    "LGPL-2.1",
+    "LGPL-3.0",
+]
+
+# Lint level for licenses considered copyleft
+copyleft = "warn"
+
+# Exceptions for specific crates
+[[licenses.exceptions]]
+# openssl has a complex license but is required for SSH/SFTP
+allow = ["OpenSSL"]
+name = "openssl"
+
+[[licenses.exceptions]]
+# ring is commonly used and has a permissive but complex license
+allow = ["LicenseRef-ring"]
+name = "ring"
+
+[sources]
+# Lint level for crates from unknown registries
+unknown-registry = "warn"
+# Lint level for crates from unknown git sources
+unknown-git = "warn"
+# List of allowed registries
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+
+[advisories]
+# Path to the advisory database
+db-path = "~/.cargo/advisory-db"
+# The URL(s) of the advisory databases to use
+db-urls = ["https://github.com/rustsec/advisory-db"]
+# The lint level for security vulnerabilities
+vulnerability = "deny"
+# The lint level for unmaintained crates
+unmaintained = "warn"
+# The lint level for crates with security notices
+notice = "warn"
+# The lint level for crates that have been yanked from their source registry
+yanked = "warn"
+
+# Ignore specific advisories
+ignore = [
+    # Example:
+    # "RUSTSEC-2020-0001",
+]

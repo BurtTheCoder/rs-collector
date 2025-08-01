@@ -3,15 +3,20 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 use bytes::BytesMut;
 use anyhow::Result;
 
-// ZIP format constants
-pub const LOCAL_FILE_HEADER_SIGNATURE: u32 = 0x04034b50;
-pub const CENTRAL_DIR_HEADER_SIGNATURE: u32 = 0x02014b50;
-pub const END_OF_CENTRAL_DIR_SIGNATURE: u32 = 0x06054b50;
-pub const VERSION_NEEDED: u16 = 20; // 2.0
-pub const VERSION_MADE_BY: u16 = 0x031e; // UNIX + 3.0
-pub const COMPRESSION_METHOD_DEFLATE: u16 = 8;
-pub const COMPRESSION_METHOD_STORE: u16 = 0;
-pub const DEFAULT_BIT_FLAG: u16 = 0;
+use crate::constants::{
+    ZIP_LOCAL_FILE_HEADER_SIGNATURE as LOCAL_FILE_HEADER_SIGNATURE,
+    ZIP_CENTRAL_DIR_HEADER_SIGNATURE as CENTRAL_DIR_HEADER_SIGNATURE,
+    ZIP_END_OF_CENTRAL_DIR_SIGNATURE as END_OF_CENTRAL_DIR_SIGNATURE,
+};
+
+// Re-export these constants publicly
+pub use crate::constants::{
+    ZIP_VERSION_NEEDED as VERSION_NEEDED,
+    ZIP_VERSION_MADE_BY as VERSION_MADE_BY,
+    ZIP_COMPRESSION_METHOD_DEFLATE as COMPRESSION_METHOD_DEFLATE,
+    ZIP_COMPRESSION_METHOD_STORE as COMPRESSION_METHOD_STORE,
+    ZIP_DEFAULT_BIT_FLAG as DEFAULT_BIT_FLAG,
+};
 
 /// ZIP file entry information
 pub struct ZipEntry {
@@ -32,6 +37,7 @@ pub struct FileOptions {
 }
 
 /// Compression methods
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum CompressionMethod {
     Stored,
     Deflated,

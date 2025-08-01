@@ -359,3 +359,340 @@ impl Clone for MacOSCollector {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    use crate::config::MacOSArtifactType;
+
+    #[test]
+    fn test_macos_collector_new() {
+        let collector = MacOSCollector::new();
+        // Just verify it creates without panic
+        assert!(collector.supports_artifact_type(&ArtifactType::MacOS(MacOSArtifactType::UnifiedLogs)));
+    }
+
+    #[test]
+    fn test_macos_collector_clone() {
+        let collector1 = MacOSCollector::new();
+        let collector2 = collector1.clone();
+        
+        // Both should support the same artifact types
+        assert_eq!(
+            collector1.supports_artifact_type(&ArtifactType::MacOS(MacOSArtifactType::FSEvents)),
+            collector2.supports_artifact_type(&ArtifactType::MacOS(MacOSArtifactType::FSEvents))
+        );
+    }
+
+    #[test]
+    fn test_supports_artifact_type() {
+        let collector = MacOSCollector::new();
+        
+        // macOS-specific types
+        assert!(collector.supports_artifact_type(&ArtifactType::MacOS(MacOSArtifactType::UnifiedLogs)));
+        assert!(collector.supports_artifact_type(&ArtifactType::MacOS(MacOSArtifactType::FSEvents)));
+        assert!(collector.supports_artifact_type(&ArtifactType::MacOS(MacOSArtifactType::Plist)));
+        assert!(collector.supports_artifact_type(&ArtifactType::MacOS(MacOSArtifactType::Spotlight)));
+        assert!(collector.supports_artifact_type(&ArtifactType::MacOS(MacOSArtifactType::Quarantine)));
+        assert!(collector.supports_artifact_type(&ArtifactType::MacOS(MacOSArtifactType::KnowledgeC)));
+        assert!(collector.supports_artifact_type(&ArtifactType::MacOS(MacOSArtifactType::LaunchAgents)));
+        assert!(collector.supports_artifact_type(&ArtifactType::MacOS(MacOSArtifactType::LaunchDaemons)));
+        
+        // Generic types
+        assert!(collector.supports_artifact_type(&ArtifactType::FileSystem));
+        assert!(collector.supports_artifact_type(&ArtifactType::Logs));
+        assert!(collector.supports_artifact_type(&ArtifactType::UserData));
+        assert!(collector.supports_artifact_type(&ArtifactType::SystemInfo));
+        assert!(collector.supports_artifact_type(&ArtifactType::Memory));
+        assert!(collector.supports_artifact_type(&ArtifactType::Network));
+        assert!(collector.supports_artifact_type(&ArtifactType::Custom));
+        
+        // Unsupported types
+        assert!(!collector.supports_artifact_type(&ArtifactType::Windows(crate::config::WindowsArtifactType::MFT)));
+        assert!(!collector.supports_artifact_type(&ArtifactType::Linux(crate::config::LinuxArtifactType::SysLogs)));
+    }
+
+    #[tokio::test]
+    async fn test_collect_macos_artifact_unified_logs() {
+        let collector = MacOSCollector::new();
+        let temp_dir = TempDir::new().unwrap();
+        
+        // Create a test log file
+        let test_log_file = temp_dir.path().join("system.log");
+        fs::write(&test_log_file, "Test system log content\n").unwrap();
+        
+        let artifact = Artifact {
+            name: "system.log".to_string(),
+            artifact_type: ArtifactType::MacOS(MacOSArtifactType::UnifiedLogs),
+            source_path: test_log_file.to_string_lossy().to_string(),
+            destination_name: "system.log".to_string(),
+            description: Some("System logs".to_string()),
+            required: true,
+            metadata: std::collections::HashMap::new(),
+            regex: None,
+        };
+        
+        let output_path = temp_dir.path().join("output").join("system.log");
+        let result = collector.collect(&artifact, &output_path).await;
+        
+        assert!(result.is_ok());
+        assert!(output_path.exists());
+        let content = fs::read_to_string(&output_path).unwrap();
+        assert_eq!(content, "Test system log content\n");
+    }
+
+    #[tokio::test]
+    async fn test_collect_macos_artifact_fsevents() {
+        let collector = MacOSCollector::new();
+        let temp_dir = TempDir::new().unwrap();
+        
+        // Create a test FSEvents directory
+        let test_fsevents_dir = temp_dir.path().join("fseventsd");
+        fs::create_dir_all(&test_fsevents_dir).unwrap();
+        fs::write(test_fsevents_dir.join("0000000000000001"), "fake fsevents data\n").unwrap();
+        
+        let artifact = Artifact {
+            name: "fseventsd".to_string(),
+            artifact_type: ArtifactType::MacOS(MacOSArtifactType::FSEvents),
+            source_path: test_fsevents_dir.to_string_lossy().to_string(),
+            destination_name: "fseventsd".to_string(),
+            description: Some("File system events".to_string()),
+            required: false,
+            metadata: std::collections::HashMap::new(),
+            regex: None,
+        };
+        
+        let output_path = temp_dir.path().join("output").join("fseventsd");
+        let result = collector.collect(&artifact, &output_path).await;
+        
+        assert!(result.is_ok());
+        assert!(output_path.exists());
+        assert!(output_path.is_dir());
+    }
+
+    #[tokio::test]
+    async fn test_collect_with_env_vars() {
+        let collector = MacOSCollector::new();
+        let temp_dir = TempDir::new().unwrap();
+        
+        // Create test directory structure
+        let test_home = temp_dir.path().join("Users").join("testuser");
+        let library_dir = test_home.join("Library").join("Preferences");
+        fs::create_dir_all(&library_dir).unwrap();
+        let test_file = library_dir.join("com.apple.LaunchServices.QuarantineEventsV2");
+        fs::write(&test_file, "quarantine data\n").unwrap();
+        
+        // Set environment variable
+        std::env::set_var("HOME", test_home.to_string_lossy().to_string());
+        
+        let artifact = Artifact {
+            name: "quarantine".to_string(),
+            artifact_type: ArtifactType::MacOS(MacOSArtifactType::Quarantine),
+            source_path: "$HOME/Library/Preferences/com.apple.LaunchServices.QuarantineEventsV2".to_string(),
+            destination_name: "QuarantineEventsV2".to_string(),
+            description: Some("Quarantine database".to_string()),
+            required: false,
+            metadata: std::collections::HashMap::new(),
+            regex: None,
+        };
+        
+        let output_path = temp_dir.path().join("output").join("QuarantineEventsV2");
+        let result = collector.collect(&artifact, &output_path).await;
+        
+        // Cleanup
+        std::env::remove_var("HOME");
+        
+        assert!(result.is_ok());
+        assert!(output_path.exists());
+        let content = fs::read_to_string(&output_path).unwrap();
+        assert_eq!(content, "quarantine data\n");
+    }
+
+    #[test]
+    fn test_artifact_type_matching() {
+        let collector = MacOSCollector::new();
+        
+        // Create test artifacts for each macOS type
+        let test_cases = vec![
+            (MacOSArtifactType::UnifiedLogs, "UnifiedLogs"),
+            (MacOSArtifactType::FSEvents, "FSEvents"),
+            (MacOSArtifactType::Plist, "Plist"),
+            (MacOSArtifactType::Spotlight, "Spotlight"),
+            (MacOSArtifactType::Quarantine, "Quarantine"),
+            (MacOSArtifactType::KnowledgeC, "KnowledgeC"),
+            (MacOSArtifactType::LaunchAgents, "LaunchAgents"),
+            (MacOSArtifactType::LaunchDaemons, "LaunchDaemons"),
+        ];
+        
+        for (macos_type, name) in test_cases {
+            let artifact_type = ArtifactType::MacOS(macos_type);
+            assert!(
+                collector.supports_artifact_type(&artifact_type),
+                "Should support {} artifact type", name
+            );
+        }
+    }
+
+    #[test]
+    fn test_non_macos_artifact_rejection() {
+        let collector = MacOSCollector::new();
+        
+        // Test Windows artifact types
+        let windows_types = vec![
+            crate::config::WindowsArtifactType::MFT,
+            crate::config::WindowsArtifactType::Registry,
+            crate::config::WindowsArtifactType::EventLog,
+        ];
+        
+        for windows_type in windows_types {
+            assert!(
+                !collector.supports_artifact_type(&ArtifactType::Windows(windows_type)),
+                "Should not support Windows artifact type"
+            );
+        }
+        
+        // Test Linux artifact types
+        let linux_types = vec![
+            crate::config::LinuxArtifactType::SysLogs,
+            crate::config::LinuxArtifactType::Journal,
+            crate::config::LinuxArtifactType::Proc,
+        ];
+        
+        for linux_type in linux_types {
+            assert!(
+                !collector.supports_artifact_type(&ArtifactType::Linux(linux_type)),
+                "Should not support Linux artifact type"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_collect_plist_text() {
+        let collector = MacOSCollector::new();
+        let temp_dir = TempDir::new().unwrap();
+        
+        // Create a test text plist file
+        let test_plist = temp_dir.path().join("test.plist");
+        let plist_content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>TestKey</key>
+    <string>TestValue</string>
+</dict>
+</plist>"#;
+        fs::write(&test_plist, plist_content).unwrap();
+        
+        let artifact = Artifact {
+            name: "test.plist".to_string(),
+            artifact_type: ArtifactType::MacOS(MacOSArtifactType::Plist),
+            source_path: test_plist.to_string_lossy().to_string(),
+            destination_name: "test.plist".to_string(),
+            description: Some("Test plist".to_string()),
+            required: false,
+            metadata: std::collections::HashMap::new(),
+            regex: None,
+        };
+        
+        let output_path = temp_dir.path().join("output").join("test.plist");
+        let result = collector.collect(&artifact, &output_path).await;
+        
+        assert!(result.is_ok());
+        assert!(output_path.exists());
+        let content = fs::read_to_string(&output_path).unwrap();
+        assert!(content.contains("TestKey"));
+        assert!(content.contains("TestValue"));
+    }
+
+    #[tokio::test]
+    async fn test_collect_launch_agents_directory() {
+        let collector = MacOSCollector::new();
+        let temp_dir = TempDir::new().unwrap();
+        
+        // Create a test LaunchAgents directory with plist files
+        let launch_agents_dir = temp_dir.path().join("LaunchAgents");
+        fs::create_dir_all(&launch_agents_dir).unwrap();
+        fs::write(launch_agents_dir.join("com.test.agent1.plist"), "agent1 content\n").unwrap();
+        fs::write(launch_agents_dir.join("com.test.agent2.plist"), "agent2 content\n").unwrap();
+        
+        let artifact = Artifact {
+            name: "launch_agents".to_string(),
+            artifact_type: ArtifactType::MacOS(MacOSArtifactType::LaunchAgents),
+            source_path: launch_agents_dir.to_string_lossy().to_string(),
+            destination_name: "LaunchAgents".to_string(),
+            description: Some("Launch agents".to_string()),
+            required: false,
+            metadata: std::collections::HashMap::new(),
+            regex: None,
+        };
+        
+        let output_path = temp_dir.path().join("output").join("LaunchAgents");
+        let result = collector.collect(&artifact, &output_path).await;
+        
+        assert!(result.is_ok());
+        assert!(output_path.exists());
+        assert!(output_path.is_dir());
+        assert!(output_path.join("com.test.agent1.plist").exists());
+        assert!(output_path.join("com.test.agent2.plist").exists());
+    }
+
+    #[tokio::test]
+    async fn test_collect_knowledgec_database() {
+        let collector = MacOSCollector::new();
+        let temp_dir = TempDir::new().unwrap();
+        
+        // Create a test database file
+        let test_db = temp_dir.path().join("knowledgeC.db");
+        fs::write(&test_db, "fake database content\n").unwrap();
+        
+        let artifact = Artifact {
+            name: "knowledgec".to_string(),
+            artifact_type: ArtifactType::MacOS(MacOSArtifactType::KnowledgeC),
+            source_path: test_db.to_string_lossy().to_string(),
+            destination_name: "knowledgeC.db".to_string(),
+            description: Some("User activity database".to_string()),
+            required: false,
+            metadata: std::collections::HashMap::new(),
+            regex: None,
+        };
+        
+        let output_path = temp_dir.path().join("output").join("knowledgeC.db");
+        let result = collector.collect(&artifact, &output_path).await;
+        
+        assert!(result.is_ok());
+        assert!(output_path.exists());
+        let content = fs::read_to_string(&output_path).unwrap();
+        assert_eq!(content, "fake database content\n");
+    }
+
+    #[tokio::test]
+    async fn test_collect_spotlight_directory() {
+        let collector = MacOSCollector::new();
+        let temp_dir = TempDir::new().unwrap();
+        
+        // Create a test Spotlight directory
+        let spotlight_dir = temp_dir.path().join(".Spotlight-V100");
+        fs::create_dir_all(&spotlight_dir).unwrap();
+        fs::write(spotlight_dir.join("Store-V2"), "spotlight index data\n").unwrap();
+        
+        let artifact = Artifact {
+            name: "spotlight_store".to_string(),
+            artifact_type: ArtifactType::MacOS(MacOSArtifactType::Spotlight),
+            source_path: spotlight_dir.to_string_lossy().to_string(),
+            destination_name: "Spotlight".to_string(),
+            description: Some("Spotlight metadata".to_string()),
+            required: false,
+            metadata: std::collections::HashMap::new(),
+            regex: None,
+        };
+        
+        let output_path = temp_dir.path().join("output").join("Spotlight");
+        let result = collector.collect(&artifact, &output_path).await;
+        
+        assert!(result.is_ok());
+        assert!(output_path.exists());
+        assert!(output_path.is_dir());
+        assert!(output_path.join("Store-V2").exists());
+    }
+}

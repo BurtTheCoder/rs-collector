@@ -9,9 +9,183 @@ target/
 # MSVC Windows builds of rustc generate these, which store debugging information
 *.pdb
 
-# RustRover
-#  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
-#  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
-#  and can be added to the global gitignore or merged into this file.  For a more nuclear
-#  option (not recommended) you can uncomment the following to ignore the entire idea folder.
-#.idea/
+# Cargo.lock is included for binary crates, but you may want to exclude it for libraries
+# Remove the following line if you want to commit Cargo.lock for binary crates
+# Cargo.lock
+
+# RustRover / IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# Claude Code
+.claude/
+CLAUDE.md
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+.directory
+
+# Editor backups and swap files
+*.swp
+*.swo
+*.swn
+*.bak
+*.tmp
+*.orig
+\#*\#
+.\#*
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Test output
+test_output/
+test_results/
+coverage/
+tarpaulin-report.html
+cobertura.xml
+lcov.info
+
+# Benchmark results
+perf_results/
+criterion/
+
+# Documentation build
+doc/
+docs/_build/
+docs/_site/
+
+# Python (for any helper scripts)
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE specific files
+.classpath
+.project
+.settings/
+nbproject/
+
+# Temporary files
+tmp/
+temp/
+cache/
+
+# OS generated files
+.Spotlight-V100
+.Trashes
+._*
+
+# Security sensitive files
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+
+# Build artifacts specific to this project
+/output/
+/collected_artifacts/
+/artifacts/
+
+# Memory dumps (sensitive)
+*.dmp
+*.dump
+*.bin
+memory_dump*
+
+# Configuration overrides (may contain sensitive data)
+config.local.yaml
+config.local.yml
+config.local.json
+*_local.yaml
+*_local.yml
+*_local.json
+
+# Credentials (never commit these)
+credentials/
+secrets/
+.secrets/
+
+# Work-in-progress files that shouldn't be committed
+WORK.md
+WORK_*.md
+TODO_PRIVATE.md
+NOTES_PRIVATE.md
+PROJECT_DOCUMENTATION.md
+PROJECT_STATUS.md
+
+# Personal test files
+my_test_*
+personal_*
+scratch/
+syntax_check.rs
+
+# Large test data files
+*.iso
+*.img
+*.vmdk
+*.vdi
+large_test_files/
+
+# Profiling data
+*.profdata
+*.profraw
+perf.data
+perf.data.old
+callgrind.out.*
+cachegrind.out.*
+
+# Package files
+*.tar.gz
+*.zip
+*.7z
+*.rar
+
+# Rust specific
+# Sometimes you might want to ignore Cargo.lock in libraries
+# Cargo.lock
+
+# The upload directory for SFTP/S3 testing
+uploads/
+downloads/
+
+# Integration test artifacts
+test_artifacts/
+integration_test_output/
+
+# Local scripts that shouldn't be shared
+local_*.sh
+personal_*.sh
+
+# Verification and test reports that are generated
+VERIFICATION_*.md
+docs/LEARNINGS.md
+
+# Temporary commit summaries
+GIT_COMMIT_SUMMARY.md

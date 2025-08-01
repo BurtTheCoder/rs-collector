@@ -1,5 +1,10 @@
 # Rust Collector
 
+[![CI](https://github.com/BurtTheCoder/rs-collector/actions/workflows/ci.yml/badge.svg)](https://github.com/BurtTheCoder/rs-collector/actions/workflows/ci.yml)
+[![Security Audit](https://github.com/BurtTheCoder/rs-collector/actions/workflows/security.yml/badge.svg)](https://github.com/BurtTheCoder/rs-collector/actions/workflows/security.yml)
+[![codecov](https://codecov.io/gh/BurtTheCoder/rs-collector/branch/main/graph/badge.svg)](https://codecov.io/gh/BurtTheCoder/rs-collector)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A cross-platform DFIR (Digital Forensics and Incident Response) triage collection tool written in Rust. This tool collects forensic artifacts from Windows, Linux, and macOS systems, enabling access to important system files even when locked (on Windows).
 
 ## Features
@@ -681,6 +686,60 @@ The workflow handles:
 5. **Artifact Management**: Uploads build artifacts for each configuration
 
 This ensures consistent builds across all platforms with proper OS-specific configuration handling.
+
+## Release Process
+
+Releases are automated through GitHub Actions. The release workflow automatically builds binaries for all supported platforms and creates a GitHub release with checksums.
+
+### Creating a Release
+
+1. **Update Version**
+   - Update version in `Cargo.toml`
+   - Update `CHANGELOG.md` with release notes
+
+2. **Create and Push Tag**
+   ```bash
+   git tag v1.2.3
+   git push origin v1.2.3
+   ```
+
+3. **Automated Release**
+   The release workflow will automatically:
+   - Build binaries for all platforms:
+     - Linux: x86_64, aarch64
+     - Windows: x86_64, aarch64
+     - macOS: x86_64, aarch64
+   - Create stripped, optimized release binaries
+   - Generate SHA256 checksums for all artifacts
+   - Create a GitHub release with all artifacts
+   - Provide a combined checksums.txt file
+
+### Manual Release Trigger
+
+You can also trigger a release manually from GitHub Actions:
+1. Go to Actions → Release workflow
+2. Click "Run workflow"
+3. Enter the version tag (e.g., v1.2.3)
+
+### Release Artifacts
+
+Each release includes:
+- Platform-specific binaries (e.g., `rs-collector-linux-amd64`)
+- Compressed archives (.tar.gz for Unix, .zip for Windows)
+- SHA256 checksums for verification
+- A special Linux build with all features enabled (`rs-collector-linux-amd64-full`)
+
+### Verifying Downloads
+
+Always verify the checksum of downloaded binaries:
+```bash
+# Download the binary and checksum
+wget https://github.com/BurtTheCoder/rs-collector/releases/download/v1.2.3/rs-collector-linux-amd64
+wget https://github.com/BurtTheCoder/rs-collector/releases/download/v1.2.3/checksums.txt
+
+# Verify checksum
+sha256sum -c checksums.txt --ignore-missing
+```
 
 ## Deployment Options
 

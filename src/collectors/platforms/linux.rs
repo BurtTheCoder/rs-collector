@@ -12,6 +12,7 @@ use crate::collectors::collector::ArtifactCollector;
 use crate::config::parse_unix_env_vars;
 use crate::collectors::platforms::common::FallbackCollector;
 use crate::privileges::is_elevated;
+use crate::constants::{PROC_PATH};
 
 /// Linux-specific artifact collector
 pub struct LinuxCollector {
@@ -124,7 +125,9 @@ impl LinuxCollector {
         info!("Collecting proc filesystem entry");
         
         // Special handling for /proc
-        if source.starts_with("/proc/self") || source.starts_with("/proc/thread-self") {
+        let proc_self = PathBuf::from(PROC_PATH).join("self");
+        let proc_thread_self = PathBuf::from(PROC_PATH).join("thread-self");
+        if source.starts_with(&proc_self) || source.starts_with(&proc_thread_self) {
             warn!("Skipping self-referential proc entry: {}", source.display());
             
             // Create an empty file with a note
@@ -299,6 +302,338 @@ impl Clone for LinuxCollector {
     fn clone(&self) -> Self {
         LinuxCollector {
             fallback: self.fallback.clone(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    use crate::config::LinuxArtifactType;
+
+    #[test]
+    fn test_linux_collector_new() {
+        let collector = LinuxCollector::new();
+        // Just verify it creates without panic
+        assert!(collector.supports_artifact_type(&ArtifactType::Linux(LinuxArtifactType::SysLogs)));
+    }
+
+    #[test]
+    fn test_linux_collector_clone() {
+        let collector1 = LinuxCollector::new();
+        let collector2 = collector1.clone();
+        
+        // Both should support the same artifact types
+        assert_eq!(
+            collector1.supports_artifact_type(&ArtifactType::Linux(LinuxArtifactType::Journal)),
+            collector2.supports_artifact_type(&ArtifactType::Linux(LinuxArtifactType::Journal))
+        );
+    }
+
+    #[test]
+    fn test_supports_artifact_type() {
+        let collector = LinuxCollector::new();
+        
+        // Linux-specific types
+        assert!(collector.supports_artifact_type(&ArtifactType::Linux(LinuxArtifactType::SysLogs)));
+        assert!(collector.supports_artifact_type(&ArtifactType::Linux(LinuxArtifactType::Journal)));
+        assert!(collector.supports_artifact_type(&ArtifactType::Linux(LinuxArtifactType::Proc)));
+        assert!(collector.supports_artifact_type(&ArtifactType::Linux(LinuxArtifactType::Audit)));
+        assert!(collector.supports_artifact_type(&ArtifactType::Linux(LinuxArtifactType::Cron)));
+        assert!(collector.supports_artifact_type(&ArtifactType::Linux(LinuxArtifactType::Bash)));
+        assert!(collector.supports_artifact_type(&ArtifactType::Linux(LinuxArtifactType::Apt)));
+        assert!(collector.supports_artifact_type(&ArtifactType::Linux(LinuxArtifactType::Dpkg)));
+        assert!(collector.supports_artifact_type(&ArtifactType::Linux(LinuxArtifactType::Yum)));
+        assert!(collector.supports_artifact_type(&ArtifactType::Linux(LinuxArtifactType::Systemd)));
+        
+        // Generic types
+        assert!(collector.supports_artifact_type(&ArtifactType::FileSystem));
+        assert!(collector.supports_artifact_type(&ArtifactType::Logs));
+        assert!(collector.supports_artifact_type(&ArtifactType::UserData));
+        assert!(collector.supports_artifact_type(&ArtifactType::SystemInfo));
+        assert!(collector.supports_artifact_type(&ArtifactType::Memory));
+        assert!(collector.supports_artifact_type(&ArtifactType::Network));
+        assert!(collector.supports_artifact_type(&ArtifactType::Custom));
+        
+        // Unsupported types
+        assert!(!collector.supports_artifact_type(&ArtifactType::Windows(crate::config::WindowsArtifactType::MFT)));
+        assert!(!collector.supports_artifact_type(&ArtifactType::MacOS(crate::config::MacOSArtifactType::UnifiedLogs)));
+    }
+
+    #[tokio::test]
+    async fn test_collect_linux_artifact_syslog() {
+        let collector = LinuxCollector::new();
+        let temp_dir = TempDir::new().unwrap();
+        
+        // Create a test syslog file
+        let test_log_dir = temp_dir.path().join("var").join("log");
+        fs::create_dir_all(&test_log_dir).unwrap();
+        let test_log_file = test_log_dir.join("syslog");
+        fs::write(&test_log_file, "Test syslog content\n").unwrap();
+        
+        let artifact = Artifact {
+            name: "syslog".to_string(),
+            artifact_type: ArtifactType::Linux(LinuxArtifactType::SysLogs),
+            source_path: test_log_file.to_string_lossy().to_string(),
+            destination_name: "syslog".to_string(),
+            description: Some("System logs".to_string()),
+            required: true,
+            metadata: std::collections::HashMap::new(),
+            regex: None,
+        };
+        
+        let output_path = temp_dir.path().join("output").join("syslog");
+        let result = collector.collect(&artifact, &output_path).await;
+        
+        assert!(result.is_ok());
+        assert!(output_path.exists());
+        let content = fs::read_to_string(&output_path).unwrap();
+        assert_eq!(content, "Test syslog content\n");
+    }
+
+    #[tokio::test]
+    async fn test_collect_linux_artifact_proc() {
+        let collector = LinuxCollector::new();
+        let temp_dir = TempDir::new().unwrap();
+        
+        // Create a test proc file
+        let test_proc_file = temp_dir.path().join("cmdline");
+        fs::write(&test_proc_file, "test command line\n").unwrap();
+        
+        let artifact = Artifact {
+            name: "proc-cmdline".to_string(),
+            artifact_type: ArtifactType::Linux(LinuxArtifactType::Proc),
+            source_path: test_proc_file.to_string_lossy().to_string(),
+            destination_name: "proc_cmdline".to_string(),
+            description: Some("Kernel command line".to_string()),
+            required: false,
+            metadata: std::collections::HashMap::new(),
+            regex: None,
+        };
+        
+        let output_path = temp_dir.path().join("output").join("proc_cmdline");
+        let result = collector.collect(&artifact, &output_path).await;
+        
+        assert!(result.is_ok());
+        assert!(output_path.exists());
+    }
+
+    #[tokio::test]
+    async fn test_collect_proc_self_referential() {
+        let collector = LinuxCollector::new();
+        let temp_dir = TempDir::new().unwrap();
+        
+        let artifact = Artifact {
+            name: "proc-self".to_string(),
+            artifact_type: ArtifactType::Linux(LinuxArtifactType::Proc),
+            source_path: format!("{}/self/status", PROC_PATH),
+            destination_name: "proc_self_status".to_string(),
+            description: Some("Process status".to_string()),
+            required: false,
+            metadata: std::collections::HashMap::new(),
+            regex: None,
+        };
+        
+        let output_path = temp_dir.path().join("output").join("proc_self_status");
+        let result = collector.collect(&artifact, &output_path).await;
+        
+        // Should succeed but create a note file
+        assert!(result.is_ok());
+        assert!(output_path.exists());
+        let content = fs::read_to_string(&output_path).unwrap();
+        assert!(content.contains("Skipped self-referential proc entry"));
+    }
+
+    #[tokio::test]
+    async fn test_collect_with_env_vars() {
+        let collector = LinuxCollector::new();
+        let temp_dir = TempDir::new().unwrap();
+        
+        // Create test directory structure
+        let test_home = temp_dir.path().join("home").join("user");
+        fs::create_dir_all(&test_home).unwrap();
+        let test_file = test_home.join(".bash_history");
+        fs::write(&test_file, "history content\n").unwrap();
+        
+        // Set environment variable
+        std::env::set_var("HOME", test_home.to_string_lossy().to_string());
+        
+        let artifact = Artifact {
+            name: "bash_history".to_string(),
+            artifact_type: ArtifactType::Linux(LinuxArtifactType::Bash),
+            source_path: "$HOME/.bash_history".to_string(),
+            destination_name: "bash_history".to_string(),
+            description: Some("Bash command history".to_string()),
+            required: false,
+            metadata: std::collections::HashMap::new(),
+            regex: None,
+        };
+        
+        let output_path = temp_dir.path().join("output").join("bash_history");
+        let result = collector.collect(&artifact, &output_path).await;
+        
+        // Cleanup
+        std::env::remove_var("HOME");
+        
+        assert!(result.is_ok());
+        assert!(output_path.exists());
+        let content = fs::read_to_string(&output_path).unwrap();
+        assert_eq!(content, "history content\n");
+    }
+
+    #[test]
+    fn test_artifact_type_matching() {
+        let collector = LinuxCollector::new();
+        
+        // Create test artifacts for each Linux type
+        let test_cases = vec![
+            (LinuxArtifactType::SysLogs, "SysLogs"),
+            (LinuxArtifactType::Journal, "Journal"),
+            (LinuxArtifactType::Proc, "Proc"),
+            (LinuxArtifactType::Audit, "Audit"),
+            (LinuxArtifactType::Cron, "Cron"),
+            (LinuxArtifactType::Bash, "Bash"),
+            (LinuxArtifactType::Apt, "Apt"),
+            (LinuxArtifactType::Dpkg, "Dpkg"),
+            (LinuxArtifactType::Yum, "Yum"),
+            (LinuxArtifactType::Systemd, "Systemd"),
+        ];
+        
+        for (linux_type, name) in test_cases {
+            let artifact_type = ArtifactType::Linux(linux_type);
+            assert!(
+                collector.supports_artifact_type(&artifact_type),
+                "Should support {} artifact type", name
+            );
+        }
+    }
+
+    #[test]
+    fn test_non_linux_artifact_rejection() {
+        let collector = LinuxCollector::new();
+        
+        // Test Windows artifact types
+        let windows_types = vec![
+            crate::config::WindowsArtifactType::MFT,
+            crate::config::WindowsArtifactType::Registry,
+            crate::config::WindowsArtifactType::EventLog,
+        ];
+        
+        for windows_type in windows_types {
+            assert!(
+                !collector.supports_artifact_type(&ArtifactType::Windows(windows_type)),
+                "Should not support Windows artifact type"
+            );
+        }
+        
+        // Test macOS artifact types
+        let macos_types = vec![
+            crate::config::MacOSArtifactType::UnifiedLogs,
+            crate::config::MacOSArtifactType::FSEvents,
+            crate::config::MacOSArtifactType::Quarantine,
+        ];
+        
+        for macos_type in macos_types {
+            assert!(
+                !collector.supports_artifact_type(&ArtifactType::MacOS(macos_type)),
+                "Should not support macOS artifact type"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_collect_directory_artifact() {
+        let collector = LinuxCollector::new();
+        let temp_dir = TempDir::new().unwrap();
+        
+        // Create a test directory with files
+        let test_cron_dir = temp_dir.path().join("etc").join("cron.d");
+        fs::create_dir_all(&test_cron_dir).unwrap();
+        fs::write(test_cron_dir.join("job1"), "0 * * * * root /bin/test1\n").unwrap();
+        fs::write(test_cron_dir.join("job2"), "0 * * * * root /bin/test2\n").unwrap();
+        
+        let artifact = Artifact {
+            name: "cron.d".to_string(),
+            artifact_type: ArtifactType::Linux(LinuxArtifactType::Cron),
+            source_path: test_cron_dir.to_string_lossy().to_string(),
+            destination_name: "cron.d".to_string(),
+            description: Some("System cron jobs".to_string()),
+            required: false,
+            metadata: std::collections::HashMap::new(),
+            regex: None,
+        };
+        
+        let output_path = temp_dir.path().join("output").join("cron.d");
+        let result = collector.collect(&artifact, &output_path).await;
+        
+        assert!(result.is_ok());
+        assert!(output_path.exists());
+        assert!(output_path.is_dir());
+        assert!(output_path.join("job1").exists());
+        assert!(output_path.join("job2").exists());
+    }
+
+    #[tokio::test]
+    async fn test_collect_journal_fallback() {
+        let collector = LinuxCollector::new();
+        let temp_dir = TempDir::new().unwrap();
+        
+        // Create a fake journal directory
+        let journal_dir = temp_dir.path().join("var").join("log").join("journal");
+        fs::create_dir_all(&journal_dir).unwrap();
+        fs::write(journal_dir.join("system.journal"), "fake journal data\n").unwrap();
+        
+        let artifact = Artifact {
+            name: "journal".to_string(),
+            artifact_type: ArtifactType::Linux(LinuxArtifactType::Journal),
+            source_path: journal_dir.to_string_lossy().to_string(),
+            destination_name: "journal".to_string(),
+            description: Some("Systemd journal logs".to_string()),
+            required: false,
+            metadata: std::collections::HashMap::new(),
+            regex: None,
+        };
+        
+        let output_path = temp_dir.path().join("output").join("journal");
+        let result = collector.collect(&artifact, &output_path).await;
+        
+        // Should succeed (either with journalctl or fallback)
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_collect_package_logs() {
+        let collector = LinuxCollector::new();
+        let temp_dir = TempDir::new().unwrap();
+        
+        // Create test package log files
+        let dpkg_log = temp_dir.path().join("dpkg.log");
+        fs::write(&dpkg_log, "2024-01-01 package installed\n").unwrap();
+        
+        let test_cases = vec![
+            (LinuxArtifactType::Dpkg, "dpkg.log"),
+            (LinuxArtifactType::Apt, "apt.log"),
+            (LinuxArtifactType::Yum, "yum.log"),
+        ];
+        
+        for (pkg_type, filename) in test_cases {
+            let artifact = Artifact {
+                name: filename.to_string(),
+                artifact_type: ArtifactType::Linux(pkg_type),
+                source_path: dpkg_log.to_string_lossy().to_string(),
+                destination_name: filename.to_string(),
+                description: Some("Package logs".to_string()),
+                required: false,
+                metadata: std::collections::HashMap::new(),
+                regex: None,
+            };
+            
+            let output_path = temp_dir.path().join("output").join(filename);
+            let result = collector.collect(&artifact, &output_path).await;
+            
+            assert!(result.is_ok());
+            assert!(output_path.exists());
         }
     }
 }

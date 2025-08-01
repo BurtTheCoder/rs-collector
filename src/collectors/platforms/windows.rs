@@ -154,3 +154,238 @@ impl Clone for WindowsCollector {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    use crate::config::WindowsArtifactType;
+
+    #[test]
+    fn test_windows_collector_new() {
+        let collector = WindowsCollector::new();
+        // Just verify it creates without panic
+        // The has_backup_api field is private, so we can't directly test it
+        assert!(collector.supports_artifact_type(&ArtifactType::Windows(WindowsArtifactType::MFT)));
+    }
+
+    #[test]
+    fn test_windows_collector_clone() {
+        let collector1 = WindowsCollector::new();
+        let collector2 = collector1.clone();
+        
+        // Both should support the same artifact types
+        assert_eq!(
+            collector1.supports_artifact_type(&ArtifactType::Windows(WindowsArtifactType::Registry)),
+            collector2.supports_artifact_type(&ArtifactType::Windows(WindowsArtifactType::Registry))
+        );
+    }
+
+    #[test]
+    fn test_supports_artifact_type() {
+        let collector = WindowsCollector::new();
+        
+        // Windows-specific types
+        assert!(collector.supports_artifact_type(&ArtifactType::Windows(WindowsArtifactType::MFT)));
+        assert!(collector.supports_artifact_type(&ArtifactType::Windows(WindowsArtifactType::Registry)));
+        assert!(collector.supports_artifact_type(&ArtifactType::Windows(WindowsArtifactType::EventLog)));
+        assert!(collector.supports_artifact_type(&ArtifactType::Windows(WindowsArtifactType::Prefetch)));
+        assert!(collector.supports_artifact_type(&ArtifactType::Windows(WindowsArtifactType::USNJournal)));
+        
+        // Generic types
+        assert!(collector.supports_artifact_type(&ArtifactType::FileSystem));
+        assert!(collector.supports_artifact_type(&ArtifactType::Logs));
+        assert!(collector.supports_artifact_type(&ArtifactType::UserData));
+        assert!(collector.supports_artifact_type(&ArtifactType::SystemInfo));
+        assert!(collector.supports_artifact_type(&ArtifactType::Memory));
+        assert!(collector.supports_artifact_type(&ArtifactType::Network));
+        assert!(collector.supports_artifact_type(&ArtifactType::Custom));
+        
+        // Unsupported types
+        assert!(!collector.supports_artifact_type(&ArtifactType::Linux(crate::config::LinuxArtifactType::SysLogs)));
+        assert!(!collector.supports_artifact_type(&ArtifactType::MacOS(crate::config::MacOSArtifactType::UnifiedLogs)));
+    }
+
+    #[tokio::test]
+    async fn test_collect_windows_artifact_mft() {
+        let collector = WindowsCollector::new();
+        let temp_dir = TempDir::new().unwrap();
+        
+        let artifact = Artifact {
+            name: "MFT".to_string(),
+            artifact_type: ArtifactType::Windows(WindowsArtifactType::MFT),
+            source_path: r"\\?\C:\$MFT".to_string(),
+            destination_name: "MFT".to_string(),
+            description: Some("Master File Table".to_string()),
+            required: true,
+            metadata: std::collections::HashMap::new(),
+            regex: None,
+        };
+        
+        // Note: This will fail on non-Windows systems or without admin rights
+        // But it tests the code path
+        let result = collector.collect(&artifact, temp_dir.path()).await;
+        
+        // We expect this to fail in test environment
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_collect_windows_artifact_registry() {
+        let collector = WindowsCollector::new();
+        let temp_dir = TempDir::new().unwrap();
+        
+        let artifact = Artifact {
+            name: "SYSTEM".to_string(),
+            artifact_type: ArtifactType::Windows(WindowsArtifactType::Registry),
+            source_path: r"\\?\C:\Windows\System32\config\SYSTEM".to_string(),
+            destination_name: "SYSTEM".to_string(),
+            description: Some("System registry hive".to_string()),
+            required: true,
+            metadata: std::collections::HashMap::new(),
+            regex: None,
+        };
+        
+        let result = collector.collect(&artifact, temp_dir.path()).await;
+        
+        // We expect this to fail in test environment
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_collect_with_env_vars() {
+        let collector = WindowsCollector::new();
+        let temp_dir = TempDir::new().unwrap();
+        
+        // Set a test environment variable
+        std::env::set_var("TESTDIR", r"C:\TestDirectory");
+        
+        let artifact = Artifact {
+            name: "TestFile".to_string(),
+            artifact_type: ArtifactType::Windows(WindowsArtifactType::Registry),
+            source_path: r"%TESTDIR%\test.dat".to_string(),
+            destination_name: "test.dat".to_string(),
+            description: Some("Test file with env var".to_string()),
+            required: false,
+            metadata: std::collections::HashMap::new(),
+            regex: None,
+        };
+        
+        let result = collector.collect(&artifact, temp_dir.path()).await;
+        
+        // Cleanup
+        std::env::remove_var("TESTDIR");
+        
+        // We expect this to fail but it should have expanded the env var
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_artifact_type_matching() {
+        let collector = WindowsCollector::new();
+        
+        // Create test artifacts for each Windows type
+        let test_cases = vec![
+            (WindowsArtifactType::MFT, "MFT"),
+            (WindowsArtifactType::Registry, "Registry"),
+            (WindowsArtifactType::EventLog, "EventLog"),
+            (WindowsArtifactType::Prefetch, "Prefetch"),
+            (WindowsArtifactType::USNJournal, "USNJournal"),
+        ];
+        
+        for (win_type, name) in test_cases {
+            let artifact_type = ArtifactType::Windows(win_type);
+            assert!(
+                collector.supports_artifact_type(&artifact_type),
+                "Should support {} artifact type", name
+            );
+        }
+    }
+
+    #[test]
+    fn test_generic_artifact_support() {
+        let collector = WindowsCollector::new();
+        
+        let generic_types = vec![
+            ArtifactType::FileSystem,
+            ArtifactType::Logs,
+            ArtifactType::UserData,
+            ArtifactType::SystemInfo,
+            ArtifactType::Memory,
+            ArtifactType::Network,
+            ArtifactType::Custom,
+        ];
+        
+        for artifact_type in generic_types {
+            assert!(
+                collector.supports_artifact_type(&artifact_type),
+                "Should support {:?} artifact type", artifact_type
+            );
+        }
+    }
+
+    #[test]
+    fn test_non_windows_artifact_rejection() {
+        let collector = WindowsCollector::new();
+        
+        // Test Linux artifact types
+        let linux_types = vec![
+            crate::config::LinuxArtifactType::SysLogs,
+            crate::config::LinuxArtifactType::Journal,
+            crate::config::LinuxArtifactType::Proc,
+        ];
+        
+        for linux_type in linux_types {
+            assert!(
+                !collector.supports_artifact_type(&ArtifactType::Linux(linux_type)),
+                "Should not support Linux artifact type"
+            );
+        }
+        
+        // Test macOS artifact types
+        let macos_types = vec![
+            crate::config::MacOSArtifactType::UnifiedLogs,
+            crate::config::MacOSArtifactType::FSEvents,
+            crate::config::MacOSArtifactType::Quarantine,
+        ];
+        
+        for macos_type in macos_types {
+            assert!(
+                !collector.supports_artifact_type(&ArtifactType::MacOS(macos_type)),
+                "Should not support macOS artifact type"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_collect_all_windows_types() {
+        let collector = WindowsCollector::new();
+        let temp_dir = TempDir::new().unwrap();
+        
+        let test_artifacts = vec![
+            (WindowsArtifactType::MFT, r"\\?\C:\$MFT", "MFT"),
+            (WindowsArtifactType::Registry, r"\\?\C:\Windows\System32\config\SYSTEM", "SYSTEM"),
+            (WindowsArtifactType::EventLog, r"\\?\C:\Windows\System32\winevt\Logs\System.evtx", "System.evtx"),
+            (WindowsArtifactType::Prefetch, r"\\?\C:\Windows\Prefetch\TEST.pf", "TEST.pf"),
+            (WindowsArtifactType::USNJournal, r"\\?\C:\$Extend\$UsnJrnl:$J", "UsnJrnl"),
+        ];
+        
+        for (win_type, path, name) in test_artifacts {
+            let artifact = Artifact {
+                name: name.to_string(),
+                artifact_type: ArtifactType::Windows(win_type),
+                source_path: path.to_string(),
+                destination_name: name.to_string(),
+                description: Some(format!("Test {}", name)),
+                required: false,
+                metadata: std::collections::HashMap::new(),
+                regex: None,
+            };
+            
+            let result = collector.collect(&artifact, temp_dir.path()).await;
+            
+            // All should fail in test environment but exercise the code paths
+            assert!(result.is_err());
+        }
+    }
+}

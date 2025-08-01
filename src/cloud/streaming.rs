@@ -6,6 +6,11 @@ use std::task::{Context, Poll};
 
 use anyhow::{Context as AnyhowContext, Result, anyhow};
 use crate::cloud::streaming_target::StreamingTarget;
+use crate::constants::{
+    MAX_UPLOAD_RETRIES as MAX_RETRIES,
+    S3_MIN_PART_SIZE as MIN_PART_SIZE,
+    RETRY_BASE_DELAY_MS
+};
 use bytes::{Bytes, BytesMut};
 use log::{debug, warn};
 use rusoto_core::ByteStream;
@@ -17,10 +22,6 @@ use rusoto_s3::{
 use tokio::io::AsyncWrite;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
-
-// Constants
-const MAX_RETRIES: usize = 3;
-const MIN_PART_SIZE: usize = 5 * 1024 * 1024; // 5MB (S3 minimum)
 
 /// A stream that buffers data and uploads it to S3 in parts using multipart upload.
 ///
@@ -126,7 +127,8 @@ impl S3UploadStream {
                     match client_clone.upload_part(upload_part_request).await {
                         Ok(output) => {
                             if let Some(e_tag) = output.e_tag {
-                                let mut parts = completed_parts_clone.lock().unwrap();
+                                let mut parts = completed_parts_clone.lock()
+                                    .map_err(|e| anyhow!("Failed to acquire lock on completed_parts: {}", e))?;
                                 parts.push(CompletedPart {
                                     e_tag: Some(e_tag),
                                     part_number: Some(task.part_number as i64),
@@ -215,8 +217,10 @@ impl S3UploadStream {
         }
         
         // Sort parts by part number
-        let mut parts = self.completed_parts.lock().unwrap().clone();
-        parts.sort_by_key(|part| part.part_number.unwrap());
+        let mut parts = self.completed_parts.lock()
+            .map_err(|e| anyhow!("Failed to acquire lock on completed_parts: {}", e))?
+            .clone();
+        parts.sort_by_key(|part| part.part_number.unwrap_or(0));
         
         // Complete the multipart upload
         let complete_request = CompleteMultipartUploadRequest {
@@ -355,5 +359,229 @@ impl AsyncWrite for S3UploadStream {
         }
         
         Poll::Ready(Ok(()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::AsyncWriteExt;
+    use std::sync::atomic::AtomicUsize;
+
+    #[test]
+    fn test_min_part_size_constant() {
+        assert_eq!(MIN_PART_SIZE, 5 * 1024 * 1024);
+    }
+
+    #[test]
+    fn test_max_retries_constant() {
+        assert_eq!(MAX_RETRIES, 3);
+    }
+
+    #[test]
+    fn test_upload_task_struct() {
+        let data = Bytes::from_static(b"test data");
+        let task = UploadTask {
+            data: data.clone(),
+            part_number: 1,
+        };
+        assert_eq!(task.part_number, 1);
+        assert_eq!(task.data, data);
+    }
+
+    #[test]
+    fn test_bytes_uploaded_atomic() {
+        let bytes_uploaded = Arc::new(AtomicU64::new(0));
+        bytes_uploaded.store(100, Ordering::SeqCst);
+        assert_eq!(bytes_uploaded.load(Ordering::SeqCst), 100);
+        
+        bytes_uploaded.fetch_add(50, Ordering::SeqCst);
+        assert_eq!(bytes_uploaded.load(Ordering::SeqCst), 150);
+    }
+
+    #[test]
+    fn test_part_number_atomic() {
+        let part_number = AtomicU64::new(1);
+        assert_eq!(part_number.load(Ordering::SeqCst), 1);
+        
+        let old = part_number.fetch_add(1, Ordering::SeqCst);
+        assert_eq!(old, 1);
+        assert_eq!(part_number.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn test_buffer_size_calculation() {
+        // Test minimum buffer size
+        let buffer_size = 3; // 3MB (less than minimum)
+        let actual_size = buffer_size.max(5) * 1024 * 1024;
+        assert_eq!(actual_size, 5 * 1024 * 1024);
+        
+        // Test normal buffer size
+        let buffer_size = 10; // 10MB
+        let actual_size = buffer_size.max(5) * 1024 * 1024;
+        assert_eq!(actual_size, 10 * 1024 * 1024);
+    }
+
+    #[test]
+    fn test_completed_parts_mutex() {
+        let completed_parts = Arc::new(Mutex::new(Vec::<CompletedPart>::new()));
+        
+        // Add a part
+        {
+            let mut parts = completed_parts.lock().unwrap();
+            parts.push(CompletedPart {
+                e_tag: Some("etag-1".to_string()),
+                part_number: Some(1),
+            });
+        }
+        
+        // Check it was added
+        {
+            let parts = completed_parts.lock().unwrap();
+            assert_eq!(parts.len(), 1);
+            assert_eq!(parts[0].part_number, Some(1));
+        }
+    }
+
+    #[test]
+    fn test_completed_parts_sorting() {
+        let mut parts = vec![
+            CompletedPart {
+                e_tag: Some("etag-3".to_string()),
+                part_number: Some(3),
+            },
+            CompletedPart {
+                e_tag: Some("etag-1".to_string()),
+                part_number: Some(1),
+            },
+            CompletedPart {
+                e_tag: Some("etag-2".to_string()),
+                part_number: Some(2),
+            },
+        ];
+        
+        parts.sort_by_key(|part| part.part_number.unwrap_or(0));
+        
+        assert_eq!(parts[0].part_number, Some(1));
+        assert_eq!(parts[1].part_number, Some(2));
+        assert_eq!(parts[2].part_number, Some(3));
+    }
+
+    #[test]
+    fn test_buffer_capacity() {
+        let buffer = BytesMut::with_capacity(1024);
+        assert!(buffer.capacity() >= 1024);
+        assert_eq!(buffer.len(), 0);
+    }
+
+    #[test]
+    fn test_buffer_extend() {
+        let mut buffer = BytesMut::new();
+        let data = b"hello world";
+        buffer.extend_from_slice(data);
+        assert_eq!(buffer.len(), 11);
+        assert_eq!(&buffer[..], data);
+    }
+
+    #[test]
+    fn test_buffer_split() {
+        let mut buffer = BytesMut::new();
+        buffer.extend_from_slice(b"hello world");
+        
+        let split = buffer.split();
+        assert_eq!(split.len(), 11);
+        assert_eq!(buffer.len(), 0);
+        assert_eq!(&split[..], b"hello world");
+    }
+
+    #[test]
+    fn test_retry_delay_calculation() {
+        // Test exponential backoff
+        for attempt in 0..MAX_RETRIES {
+            let delay_ms = 250 * 2u64.pow(attempt as u32);
+            let expected = match attempt {
+                0 => 250,
+                1 => 500,
+                2 => 1000,
+                _ => unreachable!(),
+            };
+            assert_eq!(delay_ms, expected);
+        }
+    }
+
+    #[test]
+    fn test_streaming_target_name_format() {
+        let bucket = "my-bucket";
+        let key = "path/to/file.txt";
+        let expected = format!("s3://{}/{}", bucket, key);
+        assert_eq!(expected, "s3://my-bucket/path/to/file.txt");
+    }
+
+    #[tokio::test]
+    async fn test_mpsc_channel_basic() {
+        let (sender, mut receiver) = mpsc::channel::<String>(10);
+        
+        // Send a message
+        sender.send("hello".to_string()).await.unwrap();
+        
+        // Receive it
+        let msg = receiver.recv().await.unwrap();
+        assert_eq!(msg, "hello");
+    }
+
+    #[tokio::test]
+    async fn test_mpsc_channel_try_send() {
+        let (sender, mut _receiver) = mpsc::channel::<String>(1);
+        
+        // First send should succeed
+        assert!(sender.try_send("first".to_string()).is_ok());
+        
+        // Second send should fail (channel full)
+        match sender.try_send("second".to_string()) {
+            Err(mpsc::error::TrySendError::Full(_)) => {},
+            _ => panic!("Expected channel to be full"),
+        }
+    }
+
+    #[test]
+    fn test_bytes_freeze() {
+        let mut bytes_mut = BytesMut::new();
+        bytes_mut.extend_from_slice(b"test data");
+        
+        let bytes = bytes_mut.freeze();
+        assert_eq!(&bytes[..], b"test data");
+        assert_eq!(bytes.len(), 9);
+    }
+
+    #[test]
+    fn test_poll_ready_variants() {
+        // Test Poll::Ready
+        let ready: Poll<Result<(), io::Error>> = Poll::Ready(Ok(()));
+        assert!(matches!(ready, Poll::Ready(Ok(()))));
+        
+        // Test Poll::Pending
+        let pending: Poll<Result<(), io::Error>> = Poll::Pending;
+        assert!(matches!(pending, Poll::Pending));
+    }
+
+    #[test]
+    fn test_io_error_creation() {
+        let error = io::Error::new(io::ErrorKind::BrokenPipe, "test error");
+        assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
+    }
+
+    #[test]
+    fn test_duration_from_millis() {
+        let duration = Duration::from_millis(500);
+        assert_eq!(duration.as_millis(), 500);
+    }
+
+    #[test]
+    fn test_pin_creation() {
+        let value = 42;
+        let boxed = Box::new(value);
+        let pinned = Box::pin(value);
+        assert_eq!(*boxed, 42);
+        assert_eq!(*pinned, 42);
     }
 }

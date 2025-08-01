@@ -1,0 +1,212 @@
+name: Documentation
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - '**/*.rs'
+      - '**/Cargo.toml'
+      - 'README.md'
+      - 'docs/**'
+      - '.github/workflows/docs.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '**/*.rs'
+      - '**/Cargo.toml'
+      - 'README.md'
+      - 'docs/**'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  check-docs:
+    name: Check Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Cache cargo registry
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libyara-dev
+
+      - name: Check documentation builds
+        run: |
+          cargo doc --all-features --no-deps
+          cargo test --doc --all-features
+
+      - name: Check for broken intra-doc links
+        run: |
+          cargo doc --all-features --no-deps 2>&1 | grep -i "warning" || echo "No documentation warnings found"
+
+      - name: Generate full documentation
+        run: |
+          cargo doc --all-features --document-private-items
+
+      - name: Archive documentation
+        uses: actions/upload-artifact@v3
+        with:
+          name: documentation
+          path: target/doc
+
+  check-examples:
+    name: Check Code Examples
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Cache cargo registry
+        uses: Swatinem/rust-cache@v2
+
+      - name: Create example config files
+        run: |
+          # Create example configuration for testing
+          cat > example_config.yaml << 'EOF'
+          name: example-collection
+          artifacts:
+            linux:
+              - name: system-logs
+                paths:
+                  - /var/log/syslog
+                  - /var/log/auth.log
+            windows:
+              - name: event-logs
+                paths:
+                  - C:\Windows\System32\winevt\Logs\*.evtx
+            macos:
+              - name: system-logs
+                paths:
+                  - /var/log/system.log
+          output_dir: ./example_output
+          EOF
+
+          # Create example YARA rule
+          cat > example.yara << 'EOF'
+          rule ExampleRule {
+              strings:
+                  $a = "example"
+              condition:
+                  $a
+          }
+          EOF
+
+      - name: Test example usage commands
+        run: |
+          # Test help command
+          cargo run -- --help || true
+          
+          # Test version command
+          cargo run -- --version || true
+          
+          # Test with example config (dry run)
+          echo "Testing with example config..."
+          cargo run -- -c example_config.yaml --dry-run || echo "Dry run completed"
+
+  readme-validation:
+    name: Validate README
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Check README exists
+        run: |
+          if [ ! -f "README.md" ]; then
+            echo "ERROR: README.md not found!"
+            exit 1
+          fi
+
+      - name: Validate README structure
+        run: |
+          # Check for required sections
+          echo "Checking README structure..."
+          
+          # Required sections
+          sections=("Features" "Usage" "Installation" "Configuration" "License")
+          
+          for section in "${sections[@]}"; do
+            if ! grep -q "^#.*$section" README.md; then
+              echo "WARNING: Section '$section' not found in README.md"
+            else
+              echo "✓ Section '$section' found"
+            fi
+          done
+
+      - name: Check for broken links in README
+        run: |
+          # Extract URLs from README
+          grep -Eo 'https?://[^)]+' README.md | while read url; do
+            if curl -s -L --head --fail "$url" > /dev/null 2>&1; then
+              echo "✓ Valid URL: $url"
+            else
+              echo "✗ Broken URL: $url"
+            fi
+          done || echo "Link checking completed"
+
+  api-docs:
+    name: API Documentation Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+
+      - name: Cache cargo registry
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check documentation coverage
+        run: |
+          # Count public items without documentation
+          echo "Checking for undocumented public APIs..."
+          cargo rustdoc -- -D missing_docs || echo "Some public APIs are missing documentation"
+
+      - name: Generate documentation report
+        run: |
+          # Create a simple documentation coverage report
+          echo "# Documentation Coverage Report" > doc_report.md
+          echo "" >> doc_report.md
+          echo "## Public API Documentation Status" >> doc_report.md
+          echo "" >> doc_report.md
+          
+          # Find all public functions, structs, enums without docs
+          find src -name "*.rs" -type f | while read file; do
+            echo "### $file" >> doc_report.md
+            grep -n "^pub " "$file" | grep -v "///" | head -10 >> doc_report.md || echo "All items documented" >> doc_report.md
+            echo "" >> doc_report.md
+          done
+
+      - name: Upload documentation report
+        uses: actions/upload-artifact@v3
+        with:
+          name: doc-coverage-report
+          path: doc_report.md

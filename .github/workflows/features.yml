@@ -1,0 +1,245 @@
+name: Feature Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - '**/*.rs'
+      - '**/Cargo.toml'
+      - '.github/workflows/features.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '**/*.rs'
+      - '**/Cargo.toml'
+      - '.github/workflows/features.yml'
+  schedule:
+    # Run weekly on Sundays at 1 AM UTC
+    - cron: '0 1 * * 0'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  test-features:
+    name: Test Feature Combinations
+    strategy:
+      matrix:
+        include:
+          # Test default features
+          - name: "Default Features"
+            os: ubuntu-latest
+            features: ""
+            rust: stable
+            
+          # Test no default features
+          - name: "No Default Features"
+            os: ubuntu-latest
+            features: "--no-default-features"
+            rust: stable
+            
+          # Test memory_collection feature
+          - name: "Memory Collection (Linux)"
+            os: ubuntu-latest
+            features: "--features memory_collection"
+            rust: stable
+            install-yara: true
+            
+          - name: "Memory Collection (macOS)"
+            os: macos-latest
+            features: "--features memory_collection"
+            rust: stable
+            install-yara: true
+            
+          # Test embed_config feature
+          - name: "Embed Config"
+            os: ubuntu-latest
+            features: "--features embed_config"
+            rust: stable
+            
+          # Test yara feature
+          - name: "YARA Support (Linux)"
+            os: ubuntu-latest
+            features: "--features yara"
+            rust: stable
+            install-yara: true
+            
+          - name: "YARA Support (macOS)"
+            os: macos-latest
+            features: "--features yara"
+            rust: stable
+            install-yara: true
+            
+          # Test all features combined
+          - name: "All Features (Linux)"
+            os: ubuntu-latest
+            features: "--all-features"
+            rust: stable
+            install-yara: true
+            
+          - name: "All Features (macOS)"
+            os: macos-latest
+            features: "--all-features"
+            rust: stable
+            install-yara: true
+            
+          # Test specific combinations
+          - name: "Memory + YARA"
+            os: ubuntu-latest
+            features: "--features memory_collection,yara"
+            rust: stable
+            install-yara: true
+            
+          - name: "Embed + Memory"
+            os: ubuntu-latest
+            features: "--features embed_config,memory_collection"
+            rust: stable
+            install-yara: true
+            
+          # Test on beta/nightly
+          - name: "All Features (Beta)"
+            os: ubuntu-latest
+            features: "--all-features"
+            rust: beta
+            install-yara: true
+            
+          - name: "All Features (Nightly)"
+            os: ubuntu-latest
+            features: "--all-features"
+            rust: nightly
+            install-yara: true
+            allow-failure: true
+
+      fail-fast: false
+      
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.allow-failure || false }}
+    
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ runner.os }}-cargo-features-${{ matrix.rust }}
+
+      - name: Install YARA (Ubuntu)
+        if: matrix.install-yara && matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libyara-dev
+
+      - name: Install YARA (macOS)
+        if: matrix.install-yara && matrix.os == 'macos-latest'
+        run: |
+          brew install yara
+
+      - name: Create test config for embed_config
+        if: contains(matrix.features, 'embed_config')
+        run: |
+          cat > config.yaml << 'EOF'
+          name: embedded-test
+          artifacts:
+            linux:
+              - name: test-artifact
+                paths:
+                  - /tmp/test
+            windows:
+              - name: test-artifact
+                paths:
+                  - C:\temp\test
+            macos:
+              - name: test-artifact
+                paths:
+                  - /tmp/test
+          output_dir: ./output-test
+          EOF
+
+      - name: Run cargo check
+        run: cargo check ${{ matrix.features }} --verbose
+
+      - name: Run cargo build
+        run: cargo build ${{ matrix.features }} --verbose
+
+      - name: Run cargo test
+        run: cargo test ${{ matrix.features }} --verbose
+
+      - name: Run clippy
+        if: matrix.rust == 'stable'
+        run: cargo clippy ${{ matrix.features }} -- -D warnings
+
+      - name: Check documentation
+        run: cargo doc ${{ matrix.features }} --no-deps
+
+  feature-matrix-summary:
+    name: Feature Test Summary
+    needs: test-features
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check test results
+        run: |
+          if [[ "${{ needs.test-features.result }}" == "success" ]]; then
+            echo "✅ All feature combinations tested successfully!"
+          else
+            echo "❌ Some feature tests failed. Check the logs above."
+            exit 1
+          fi
+
+  windows-features:
+    name: Windows Feature Tests
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        features:
+          - ""  # default
+          - "--no-default-features"
+          - "--features embed_config"
+          # Note: YARA features skipped on Windows due to complex setup
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Cache cargo registry
+        uses: Swatinem/rust-cache@v2
+
+      - name: Create test config for embed_config
+        if: contains(matrix.features, 'embed_config')
+        shell: powershell
+        run: |
+          @"
+          name: embedded-test
+          artifacts:
+            windows:
+              - name: test-artifact
+                paths:
+                  - C:\temp\test
+          output_dir: .\output-test
+          "@ | Out-File -FilePath config.yaml -Encoding UTF8
+
+      - name: Run cargo check
+        run: cargo check ${{ matrix.features }} --verbose
+
+      - name: Run cargo build
+        run: cargo build ${{ matrix.features }} --verbose
+
+      - name: Run cargo test
+        run: cargo test ${{ matrix.features }} --verbose

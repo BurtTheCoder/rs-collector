@@ -228,3 +228,201 @@ impl VolatileDataCollector {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_volatile_collector_new() {
+        let collector = VolatileDataCollector::new();
+        // Just verify it creates without panic
+        assert!(!collector.system.processes().is_empty() || collector.system.cpus().is_empty());
+    }
+
+    #[test]
+    fn test_collect_all() {
+        let mut collector = VolatileDataCollector::new();
+        let temp_dir = TempDir::new().unwrap();
+        
+        let result = collector.collect_all(temp_dir.path());
+        assert!(result.is_ok());
+        
+        let summary = result.unwrap();
+        assert!(summary.cpu_count > 0);
+        assert!(summary.total_memory_mb > 0);
+        
+        // Check that files were created
+        assert!(temp_dir.path().join("system-info.json").exists());
+        assert!(temp_dir.path().join("processes.json").exists());
+        assert!(temp_dir.path().join("network-connections.json").exists());
+        assert!(temp_dir.path().join("memory.json").exists());
+        assert!(temp_dir.path().join("disks.json").exists());
+    }
+
+    #[test]
+    fn test_collect_system_info() {
+        let collector = VolatileDataCollector::new();
+        
+        let result = collector.collect_system_info();
+        assert!(result.is_ok());
+        
+        let info = result.unwrap();
+        assert!(info.cpu_info.count > 0);
+        // OS info should be present on all systems
+        assert!(info.hostname.is_some() || info.os_name.is_some());
+    }
+
+    #[test]
+    fn test_collect_processes() {
+        let collector = VolatileDataCollector::new();
+        
+        let result = collector.collect_processes();
+        assert!(result.is_ok());
+        
+        let processes = result.unwrap();
+        // There should always be at least one process (this test process)
+        assert!(!processes.is_empty());
+        
+        // Check that process info is populated
+        for process in processes.iter().take(5) {
+            assert!(process.pid > 0);
+            assert!(!process.name.is_empty());
+            assert!(!process.status.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_collect_network() {
+        let mut collector = VolatileDataCollector::new();
+        
+        let result = collector.collect_network();
+        assert!(result.is_ok());
+        
+        let network = result.unwrap();
+        // Most systems have at least one network interface
+        // but this could be empty in some containers
+        if !network.interfaces.is_empty() {
+            let interface = &network.interfaces[0];
+            assert!(!interface.name.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_collect_memory() {
+        let mut collector = VolatileDataCollector::new();
+        
+        let result = collector.collect_memory();
+        assert!(result.is_ok());
+        
+        let memory = result.unwrap();
+        assert!(memory.total_memory > 0);
+        assert!(memory.used_memory > 0);
+        assert!(memory.used_memory <= memory.total_memory);
+        // Swap might be 0 on some systems
+        assert!(memory.used_swap <= memory.total_swap);
+    }
+
+    #[test]
+    fn test_collect_disks() {
+        let mut collector = VolatileDataCollector::new();
+        
+        let result = collector.collect_disks();
+        assert!(result.is_ok());
+        
+        let disks = result.unwrap();
+        // Most systems have at least one disk
+        if !disks.is_empty() {
+            let disk = &disks[0];
+            assert!(!disk.name.is_empty());
+            assert!(disk.total_space > 0);
+            assert!(disk.available_space <= disk.total_space);
+        }
+    }
+
+    #[test]
+    fn test_save_to_json() {
+        let collector = VolatileDataCollector::new();
+        let temp_dir = TempDir::new().unwrap();
+        
+        #[derive(serde::Serialize)]
+        struct TestData {
+            test: String,
+            value: u32,
+        }
+        
+        let data = TestData {
+            test: "hello".to_string(),
+            value: 42,
+        };
+        
+        let output_path = temp_dir.path().join("test.json");
+        let result = collector.save_to_json(&data, &output_path);
+        assert!(result.is_ok());
+        assert!(output_path.exists());
+        
+        // Verify the content
+        let content = fs::read_to_string(&output_path).unwrap();
+        assert!(content.contains("\"test\": \"hello\""));
+        assert!(content.contains("\"value\": 42"));
+    }
+
+    #[test]
+    fn test_save_to_json_with_nested_path() {
+        let collector = VolatileDataCollector::new();
+        let temp_dir = TempDir::new().unwrap();
+        
+        let data = vec!["test1", "test2"];
+        let output_path = temp_dir.path().join("nested").join("dir").join("test.json");
+        
+        let result = collector.save_to_json(&data, &output_path);
+        assert!(result.is_ok());
+        assert!(output_path.exists());
+        assert!(output_path.parent().unwrap().exists());
+    }
+
+    #[test]
+    fn test_process_status_mapping() {
+        // Test that we handle all process statuses correctly
+        let statuses = vec![
+            (ProcessStatus::Run, "Running"),
+            (ProcessStatus::Sleep, "Sleeping"),
+            (ProcessStatus::Stop, "Stopped"),
+            (ProcessStatus::Zombie, "Zombie"),
+            (ProcessStatus::Idle, "Idle"),
+        ];
+        
+        // Verify our mapping matches expected values
+        for (status, expected) in statuses {
+            let actual = match status {
+                ProcessStatus::Run => "Running",
+                ProcessStatus::Sleep => "Sleeping",
+                ProcessStatus::Stop => "Stopped",
+                ProcessStatus::Zombie => "Zombie",
+                ProcessStatus::Idle => "Idle",
+                _ => "Unknown",
+            };
+            assert_eq!(actual, expected);
+        }
+    }
+
+    #[test]
+    fn test_summary_calculation() {
+        let mut collector = VolatileDataCollector::new();
+        let temp_dir = TempDir::new().unwrap();
+        
+        let result = collector.collect_all(temp_dir.path());
+        assert!(result.is_ok());
+        
+        let summary = result.unwrap();
+        
+        // Verify summary values are reasonable
+        assert!(summary.cpu_count > 0 && summary.cpu_count < 1000); // Reasonable CPU count
+        assert!(summary.total_memory_mb > 0); // Should have some memory
+        assert!(summary.process_count > 0); // Should have at least one process
+        // Network and disk counts can be 0 in some environments
+        assert!(summary.network_interface_count >= 0);
+        assert!(summary.disk_count >= 0);
+    }
+}

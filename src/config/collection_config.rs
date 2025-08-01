@@ -151,6 +151,29 @@ impl CollectionConfig {
     }
 }
 
+/// Load a configuration file or create a default one.
+/// 
+/// This function attempts to load a configuration in the following order:
+/// 1. From the specified path if provided and exists
+/// 2. From an OS-specific default config file if no path provided
+/// 3. Creates a new default configuration if no files exist
+/// 
+/// # Arguments
+/// 
+/// * `config_path` - Optional path to a configuration file
+/// 
+/// # Returns
+/// 
+/// * `Ok(CollectionConfig)` - The loaded or created configuration
+/// * `Err` - If config file exists but cannot be parsed
+/// 
+/// # Platform-Specific Behavior
+/// 
+/// When no config path is provided, the function looks for:
+/// - Windows: `config/windows_default.yaml`
+/// - Linux: `config/linux_default.yaml`
+/// - macOS: `config/macos_default.yaml`
+/// - Other: `config/default.yaml`
 pub fn load_or_create_config(config_path: Option<&Path>) -> Result<CollectionConfig> {
     match config_path {
         Some(path) => {
@@ -189,6 +212,255 @@ pub fn load_or_create_config(config_path: Option<&Path>) -> Result<CollectionCon
                 info!("No config path provided, using default configuration for {}", std::env::consts::OS);
                 Ok(CollectionConfig::default())
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::{TempDir, NamedTempFile};
+    use std::fs;
+
+    fn create_test_artifact() -> Artifact {
+        Artifact {
+            name: "test_artifact".to_string(),
+            artifact_type: ArtifactType::Logs,
+            source_path: "/var/log/test.log".to_string(),
+            destination_name: "test.log".to_string(),
+            description: Some("Test artifact".to_string()),
+            required: true,
+            metadata: HashMap::new(),
+            regex: None,
+        }
+    }
+
+    fn create_test_config() -> CollectionConfig {
+        CollectionConfig {
+            version: "1.0".to_string(),
+            description: "Test configuration".to_string(),
+            artifacts: vec![create_test_artifact()],
+            global_options: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn test_config_serialization_deserialization() {
+        let config = create_test_config();
+        
+        // Serialize to YAML
+        let yaml = serde_yaml::to_string(&config).unwrap();
+        assert!(yaml.contains("version: '1.0'"));
+        assert!(yaml.contains("test_artifact"));
+        
+        // Deserialize back
+        let deserialized: CollectionConfig = serde_yaml::from_str(&yaml).unwrap();
+        assert_eq!(deserialized.version, config.version);
+        assert_eq!(deserialized.artifacts.len(), 1);
+        assert_eq!(deserialized.artifacts[0].name, "test_artifact");
+    }
+
+    #[test]
+    fn test_save_and_load_yaml_file() {
+        let config = create_test_config();
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("test_config.yaml");
+        
+        // Save to file
+        config.save_to_yaml_file(&config_path).unwrap();
+        assert!(config_path.exists());
+        
+        // Load from file
+        let loaded = CollectionConfig::from_yaml_file(&config_path).unwrap();
+        assert_eq!(loaded.version, config.version);
+        assert_eq!(loaded.artifacts.len(), config.artifacts.len());
+    }
+
+    #[test]
+    fn test_default_configs() {
+        // Test Windows default
+        let windows_config = CollectionConfig::default_windows();
+        assert!(windows_config.version == "1.0");
+        assert!(windows_config.artifacts.iter().any(|a| a.name == "MFT"));
+        assert!(windows_config.artifacts.iter().any(|a| a.name == "SYSTEM"));
+        
+        // Test Linux default
+        let linux_config = CollectionConfig::default_linux();
+        assert!(linux_config.artifacts.iter().any(|a| a.name == "syslog"));
+        assert!(linux_config.artifacts.iter().any(|a| a.name == "auth.log"));
+        
+        // Test macOS default
+        let macos_config = CollectionConfig::default_macos();
+        assert!(macos_config.artifacts.iter().any(|a| a.name == "unified_logs"));
+        assert!(macos_config.artifacts.iter().any(|a| a.name == "fseventsd"));
+        
+        // Test minimal default
+        let minimal_config = CollectionConfig::default_minimal();
+        assert!(minimal_config.artifacts.len() >= 2);
+    }
+
+    #[test]
+    fn test_process_environment_variables() {
+        let mut config = CollectionConfig {
+            version: "1.0".to_string(),
+            description: "Test".to_string(),
+            artifacts: vec![
+                Artifact {
+                    name: "windows_env".to_string(),
+                    artifact_type: ArtifactType::Logs,
+                    source_path: "%TEMP%/test.log".to_string(),
+                    destination_name: "test.log".to_string(),
+                    description: None,
+                    required: false,
+                    metadata: HashMap::new(),
+                    regex: None,
+                },
+                Artifact {
+                    name: "unix_env".to_string(),
+                    artifact_type: ArtifactType::Logs,
+                    source_path: "$HOME/test.log".to_string(),
+                    destination_name: "test.log".to_string(),
+                    description: None,
+                    required: false,
+                    metadata: HashMap::new(),
+                    regex: None,
+                },
+            ],
+            global_options: HashMap::new(),
+        };
+        
+        // Set test environment variables
+        std::env::set_var("TEMP", "/tmp");
+        std::env::set_var("HOME", "/home/user");
+        
+        config.process_environment_variables().unwrap();
+        
+        // Check that variables were expanded
+        assert!(!config.artifacts[0].source_path.contains("%TEMP%"));
+        assert!(!config.artifacts[1].source_path.contains("$HOME"));
+    }
+
+    #[test]
+    fn test_load_or_create_config_existing_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("existing.yaml");
+        
+        // Create a config file
+        let test_config = create_test_config();
+        test_config.save_to_yaml_file(&config_path).unwrap();
+        
+        // Load it
+        let loaded = load_or_create_config(Some(&config_path)).unwrap();
+        assert_eq!(loaded.version, test_config.version);
+    }
+
+    #[test]
+    fn test_load_or_create_config_new_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("new.yaml");
+        
+        // Load non-existent file (should create default)
+        let loaded = load_or_create_config(Some(&config_path)).unwrap();
+        assert!(config_path.exists());
+        assert_eq!(loaded.version, "1.0");
+    }
+
+    #[test]
+    fn test_load_or_create_config_no_path() {
+        // Load with no path (should use default)
+        let loaded = load_or_create_config(None).unwrap();
+        assert_eq!(loaded.version, "1.0");
+    }
+
+    #[test]
+    fn test_create_os_specific_config_file() {
+        let temp_dir = TempDir::new().unwrap();
+        
+        // Test Windows config
+        let windows_path = temp_dir.path().join("windows.yaml");
+        CollectionConfig::create_os_specific_config_file(&windows_path, "windows").unwrap();
+        assert!(windows_path.exists());
+        let windows_config = CollectionConfig::from_yaml_file(&windows_path).unwrap();
+        assert!(windows_config.artifacts.iter().any(|a| a.name == "MFT"));
+        
+        // Test Linux config
+        let linux_path = temp_dir.path().join("linux.yaml");
+        CollectionConfig::create_os_specific_config_file(&linux_path, "linux").unwrap();
+        assert!(linux_path.exists());
+        let linux_config = CollectionConfig::from_yaml_file(&linux_path).unwrap();
+        assert!(linux_config.artifacts.iter().any(|a| a.name == "syslog"));
+    }
+
+    #[test]
+    fn test_artifact_with_regex() {
+        let artifact = Artifact {
+            name: "logs_with_pattern".to_string(),
+            artifact_type: ArtifactType::Logs,
+            source_path: "/var/log".to_string(),
+            destination_name: "filtered_logs".to_string(),
+            description: Some("Logs matching pattern".to_string()),
+            required: false,
+            metadata: HashMap::new(),
+            regex: Some(RegexConfig {
+                enabled: true,
+                recursive: true,
+                include_pattern: "error|warn".to_string(),
+                exclude_pattern: "debug".to_string(),
+                max_depth: Some(5),
+            }),
+        };
+        
+        // Serialize and deserialize
+        let yaml = serde_yaml::to_string(&artifact).unwrap();
+        let deserialized: Artifact = serde_yaml::from_str(&yaml).unwrap();
+        
+        assert!(deserialized.regex.is_some());
+        let regex = deserialized.regex.unwrap();
+        assert!(regex.enabled);
+        assert!(regex.recursive);
+        assert_eq!(regex.include_pattern, "error|warn");
+        assert_eq!(regex.exclude_pattern, "debug");
+        assert_eq!(regex.max_depth, Some(5));
+    }
+
+    #[test]
+    fn test_invalid_yaml_error() {
+        let temp_file = NamedTempFile::new().unwrap();
+        fs::write(temp_file.path(), "invalid: yaml: content:").unwrap();
+        
+        let result = CollectionConfig::from_yaml_file(temp_file.path());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Failed to parse YAML"));
+    }
+
+    #[test]
+    fn test_path_normalization() {
+        let mut config = CollectionConfig {
+            version: "1.0".to_string(),
+            description: "Test".to_string(),
+            artifacts: vec![
+                Artifact {
+                    name: "mixed_separators".to_string(),
+                    artifact_type: ArtifactType::Logs,
+                    source_path: "C:\\Users\\test/Documents\\file.txt".to_string(),
+                    destination_name: "file.txt".to_string(),
+                    description: None,
+                    required: false,
+                    metadata: HashMap::new(),
+                    regex: None,
+                },
+            ],
+            global_options: HashMap::new(),
+        };
+        
+        config.process_environment_variables().unwrap();
+        
+        // Path should be normalized for the current OS
+        let normalized_path = &config.artifacts[0].source_path;
+        if cfg!(windows) {
+            assert!(!normalized_path.contains('/'));
+        } else {
+            assert!(!normalized_path.contains('\\'));
         }
     }
 }

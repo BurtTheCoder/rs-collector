@@ -11,6 +11,7 @@ pub use artifact_types::{
     WindowsArtifactType,
     LinuxArtifactType,
     MacOSArtifactType,
+    VolatileDataType,
 };
 
 // Re-export collection config

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use log::warn;
 use rusoto_core::Region;
 use rusoto_s3::S3Client;
@@ -26,7 +26,7 @@ pub fn create_s3_client(region_name: Option<&str>, profile: Option<&str>) -> Res
             Ok(mut provider) => {
                 provider.set_profile(profile_name);
                 Arc::new(S3Client::new_with(
-                    rusoto_core::HttpClient::new().expect("Failed to create HTTP client"),
+                    rusoto_core::HttpClient::new().map_err(|e| anyhow!("Failed to create HTTP client: {}", e))?,
                     provider,
                     region.clone()
                 ))
