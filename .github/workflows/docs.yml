@@ -60,7 +60,7 @@ jobs:
           cargo doc --all-features --document-private-items
 
       - name: Archive documentation
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: documentation
           path: target/doc
@@ -206,7 +206,7 @@ jobs:
           done
 
       - name: Upload documentation report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: doc-coverage-report
           path: doc_report.md
