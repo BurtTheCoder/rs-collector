@@ -1,16 +1,23 @@
 //! Common helper functions for MemProcFS memory collection
 
+#[cfg(feature = "memory_collection")]
 use anyhow::{Result, bail, Context};
+#[cfg(feature = "memory_collection")]  
 use log::{debug, warn, info, error};
+#[cfg(feature = "memory_collection")]
 use std::path::Path;
+#[cfg(feature = "memory_collection")]
 use std::fs;
+#[cfg(feature = "memory_collection")]
 use std::env;
 #[cfg(feature = "memory_collection")]
 use memprocfs::*;
 
+#[cfg(feature = "memory_collection")]
 use crate::collectors::memory::models::{
     MemoryRegionInfo, MemoryRegionType, MemoryProtection, ModuleInfo,
 };
+#[cfg(feature = "memory_collection")]
 use crate::collectors::volatile::models::ProcessInfo;
 
 /// Get the appropriate MemProcFS library path
@@ -103,15 +110,21 @@ pub fn convert_region_type(region: &VmmMapVadEntry) -> MemoryRegionType {
 /// Format a memory dump for output
 #[cfg(feature = "memory_collection")]
 pub fn format_memory_dump(data: &[u8], max_length: usize) -> String {
-    #[cfg(feature = "memory_collection")]
     use pretty_hex::*;
     let truncated = if data.len() > max_length {
         &data[..max_length]
     } else {
         data
     };
-    #[cfg(feature = "memory_collection")]
-    return format!("{:?}", truncated.hex_dump());
-    #[cfg(not(feature = "memory_collection"))]
-    return format!("{:?}", truncated);
+    format!("{:?}", truncated.hex_dump())
+}
+
+#[cfg(not(feature = "memory_collection"))]
+pub fn format_memory_dump(data: &[u8], max_length: usize) -> String {
+    let truncated = if data.len() > max_length {
+        &data[..max_length]
+    } else {
+        data
+    };
+    format!("{:?}", truncated)
 }

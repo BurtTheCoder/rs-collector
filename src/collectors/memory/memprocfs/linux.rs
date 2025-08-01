@@ -2,13 +2,18 @@
 //!
 //! This module provides Linux-specific initialization for the MemProcFS collector.
 
+#[cfg(feature = "memory_collection")]
 use anyhow::{Result, Context};
+#[cfg(feature = "memory_collection")]
 use log::{debug, warn, info};
+#[cfg(feature = "memory_collection")]
 use std::path::Path;
 #[cfg(feature = "memory_collection")]
 use memprocfs::*;
 
+#[cfg(feature = "memory_collection")]
 use super::collector::MemProcFSCollector;
+#[cfg(feature = "memory_collection")]
 use super::helpers::get_library_path;
 
 /// Create a MemProcFSCollector for Linux

@@ -3,7 +3,7 @@
 //! This module provides unified memory collection across all platforms
 //! using the MemProcFS library.
 
-mod collector;
+pub mod collector;
 mod helpers;
 
 // Platform-specific initialization modules

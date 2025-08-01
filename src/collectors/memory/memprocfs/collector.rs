@@ -3,23 +3,28 @@
 //! This module provides a cross-platform implementation for memory collection
 //! using the MemProcFS library.
 
-use anyhow::{Result, bail, Context};
 #[cfg(feature = "memory_collection")]
-use anyhow::anyhow;
-use log::warn;
+use anyhow::{Result, bail, Context, anyhow};
 #[cfg(feature = "memory_collection")]
-use log::{debug, info, error};
+use log::{debug, info, error, warn};
+#[cfg(feature = "memory_collection")]
 use std::collections::HashMap;
+#[cfg(feature = "memory_collection")]
 use std::path::PathBuf;
+#[cfg(feature = "memory_collection")]
 use std::sync::{Arc, Mutex};
 #[cfg(feature = "memory_collection")]
 use memprocfs::*;
 
+#[cfg(feature = "memory_collection")]
 use crate::collectors::memory::models::{
     MemoryRegionInfo, MemoryRegionType, MemoryProtection, ModuleInfo,
 };
+#[cfg(feature = "memory_collection")]
 use crate::collectors::memory::platforms::MemoryCollectorImpl;
+#[cfg(feature = "memory_collection")]
 use crate::collectors::volatile::models::ProcessInfo;
+#[cfg(feature = "memory_collection")]
 use crate::constants::MEMORY_CHUNK_SIZE;
 #[cfg(feature = "memory_collection")]
 use super::helpers::*;
