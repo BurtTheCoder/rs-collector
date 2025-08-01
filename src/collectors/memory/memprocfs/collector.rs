@@ -3,8 +3,12 @@
 //! This module provides a cross-platform implementation for memory collection
 //! using the MemProcFS library.
 
-use anyhow::{anyhow, Result, bail, Context};
-use log::{debug, warn, info, error};
+use anyhow::{Result, bail, Context};
+#[cfg(feature = "memory_collection")]
+use anyhow::anyhow;
+use log::warn;
+#[cfg(feature = "memory_collection")]
+use log::{debug, info, error};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};

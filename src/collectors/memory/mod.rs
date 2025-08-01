@@ -21,6 +21,8 @@ use std::path::Path;
 use crate::collectors::volatile::models::ProcessInfo;
 use crate::collectors::memory::collector::MemoryCollector;
 use crate::collectors::memory::models::MemoryCollectionSummary;
+#[cfg(feature = "memory_collection")]
+use crate::collectors::memory::platforms::MemoryCollectorImpl;
 
 /// Collect process memory based on command-line arguments
 pub fn collect_process_memory(
@@ -47,7 +49,8 @@ pub fn collect_process_memory(
     // Try to use MemProcFS collector first, fall back to platform-specific if needed
     #[cfg(feature = "memory_collection")]
     {
-        match memprocfs::MemProcFSCollector::new() {
+        use crate::collectors::memory::memprocfs::collector::MemProcFSCollector;
+        match <MemProcFSCollector as MemoryCollectorImpl>::new() {
             Ok(_) => {
                 info!("Using MemProcFS for memory collection");
                 // The collector will use MemProcFS internally
@@ -67,7 +70,8 @@ pub fn is_memory_collection_available() -> bool {
     #[cfg(feature = "memory_collection")]
     {
         // Try to create a MemProcFS collector
-        match memprocfs::MemProcFSCollector::new() {
+        use crate::collectors::memory::memprocfs::collector::MemProcFSCollector;
+        match <MemProcFSCollector as MemoryCollectorImpl>::new() {
             Ok(_) => true,
             Err(e) => {
                 warn!("MemProcFS memory collection is not available: {}", e);

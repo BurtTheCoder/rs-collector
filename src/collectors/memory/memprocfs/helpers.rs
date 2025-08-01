@@ -103,11 +103,15 @@ pub fn convert_region_type(region: &VmmMapVadEntry) -> MemoryRegionType {
 /// Format a memory dump for output
 #[cfg(feature = "memory_collection")]
 pub fn format_memory_dump(data: &[u8], max_length: usize) -> String {
+    #[cfg(feature = "memory_collection")]
     use pretty_hex::*;
     let truncated = if data.len() > max_length {
         &data[..max_length]
     } else {
         data
     };
-    format!("{:?}", truncated.hex_dump())
+    #[cfg(feature = "memory_collection")]
+    return format!("{:?}", truncated.hex_dump());
+    #[cfg(not(feature = "memory_collection"))]
+    return format!("{:?}", truncated);
 }

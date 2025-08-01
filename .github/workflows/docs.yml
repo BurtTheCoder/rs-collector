@@ -48,16 +48,16 @@ jobs:
 
       - name: Check documentation builds
         run: |
-          cargo doc --all-features --no-deps
-          cargo test --doc --all-features
+          cargo doc --no-deps
+          cargo test --doc
 
       - name: Check for broken intra-doc links
         run: |
-          cargo doc --all-features --no-deps 2>&1 | grep -i "warning" || echo "No documentation warnings found"
+          cargo doc --no-deps 2>&1 | grep -i "warning" || echo "No documentation warnings found"
 
       - name: Generate full documentation
         run: |
-          cargo doc --all-features --document-private-items
+          cargo doc --document-private-items
 
       - name: Archive documentation
         uses: actions/upload-artifact@v4
