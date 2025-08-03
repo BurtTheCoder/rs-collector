@@ -52,13 +52,15 @@
 //! ```no_run
 //! use rust_collector::utils::bodyfile::generate_bodyfile;
 //! use std::path::Path;
+//! use std::collections::HashMap;
 //!
-//! # async fn example() -> anyhow::Result<()> {
-//! let root_path = Path::new("/mnt/evidence");
+//! # fn example() -> anyhow::Result<()> {
 //! let output_path = Path::new("/tmp/timeline.bodyfile");
+//! let mut options = HashMap::new();
+//! options.insert("root_path".to_string(), "/mnt/evidence".to_string());
 //!
-//! let entry_count = generate_bodyfile(root_path, output_path).await?;
-//! println!("Generated bodyfile with {} entries", entry_count);
+//! generate_bodyfile(output_path, &options)?;
+//! println!("Generated bodyfile successfully");
 //! # Ok(())
 //! # }
 //! ```

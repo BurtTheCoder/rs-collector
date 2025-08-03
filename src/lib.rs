@@ -44,20 +44,22 @@
 //! ### Streaming Upload
 //!
 //! ```no_run
-//! use rust_collector::cloud::s3::S3Config;
-//! use rust_collector::collectors::streaming::s3::S3StreamingCollector;
-//! # use rust_collector::config::CollectionConfig;
+//! use rust_collector::collectors::streaming::stream_artifacts_to_s3;
+//! use rust_collector::config::CollectionConfig;
+//! use std::path::Path;
 //!
 //! # async fn example() -> anyhow::Result<()> {
-//! let s3_config = S3Config {
-//!     bucket: "my-bucket".to_string(),
-//!     region: "us-east-1".to_string(),
-//!     access_key_id: "key".to_string(),
-//!     secret_access_key: "secret".to_string(),
-//!     buffer_size_mb: 5,
-//! };
-//!
-//! let collector = S3StreamingCollector::new(s3_config).await?;
+//! let config = CollectionConfig::default();
+//! let output_dir = Path::new("/tmp/upload");
+//! 
+//! stream_artifacts_to_s3(
+//!     &config.artifacts,
+//!     output_dir,
+//!     "my-bucket",
+//!     "collections/2024-01-01/",
+//!     Some("us-east-1"),
+//!     None,
+//! ).await?;
 //! # Ok(())
 //! # }
 //! ```
