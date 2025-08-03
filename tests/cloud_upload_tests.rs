@@ -10,31 +10,24 @@ use std::path::PathBuf;
 use tempfile::TempDir;
 use anyhow::Result;
 
-use rust_collector::cloud::s3::{S3Config, UploadQueue};
+use rust_collector::cloud::s3::UploadQueue;
 use rust_collector::cloud::sftp::SFTPConfig;
 
-/// Test S3 configuration validation
+/// Test S3 upload queue basic functionality
 #[test]
-fn test_s3_config_validation() {
-    let valid_config = S3Config {
-        bucket: "test-bucket".to_string(),
-        region: "us-east-1".to_string(),
-        access_key_id: "AKIAIOSFODNN7EXAMPLE".to_string(),
-        secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".to_string(),
-        session_token: None,
-        endpoint_url: None,
-        use_path_style: false,
-        max_retries: 3,
-        multipart_threshold_mb: 100,
-        multipart_chunk_size_mb: 8,
-        storage_class: "STANDARD".to_string(),
-        server_side_encryption: None,
-        kms_key_id: None,
-    };
+fn test_s3_upload_queue_creation() {
+    // Test creating an upload queue
+    let queue = UploadQueue::new(
+        "test-bucket",
+        "test-prefix/",
+        Some("us-east-1"),
+        None
+    );
     
-    assert_eq!(valid_config.bucket, "test-bucket");
-    assert_eq!(valid_config.region, "us-east-1");
-    assert_eq!(valid_config.storage_class, "STANDARD");
+    // Verify the queue was created successfully
+    let (uploaded, total) = queue.get_progress();
+    assert_eq!(uploaded, 0);
+    assert_eq!(total, 0);
 }
 
 /// Test S3 upload queue creation and management

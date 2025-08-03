@@ -43,7 +43,7 @@ pub fn is_directory(path: &str) -> Result<bool> {
     }
     
     // Get file information
-    let mut file_info = winapi::um::minwinbase::BY_HANDLE_FILE_INFORMATION {
+    let mut file_info = winapi::um::fileapi::BY_HANDLE_FILE_INFORMATION {
         dwFileAttributes: 0,
         ftCreationTime: FILETIME { dwLowDateTime: 0, dwHighDateTime: 0 },
         ftLastAccessTime: FILETIME { dwLowDateTime: 0, dwHighDateTime: 0 },
@@ -172,7 +172,7 @@ pub fn collect_directory(source_path: &str, dest_path: &Path) -> Result<Artifact
     }
     
     // Close the find handle
-    unsafe { winapi::um::findfiles::FindClose(find_handle) };
+    unsafe { winapi::um::fileapi::FindClose(find_handle) };
     
     // Create atomic counters for parallel processing
     let total_files = Arc::new(std::sync::atomic::AtomicUsize::new(0));

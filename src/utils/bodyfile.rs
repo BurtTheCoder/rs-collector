@@ -188,10 +188,10 @@ fn create_bodyfile_line_advanced(
         "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
         hash,
         path.to_string_lossy(),
-        metadata.ino(),
+        get_inode(&metadata),
         get_mode_string(&metadata),
-        metadata.uid(),
-        metadata.gid(),
+        get_uid(&metadata),
+        get_gid(&metadata),
         metadata.len(),
         atime_str,
         mtime_str,
@@ -232,10 +232,10 @@ fn create_bodyfile_line(path: &Path) -> Option<Bodyfile3Line> {
     let line_str = format!(
         "0|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
         path.to_string_lossy(),
-        metadata.ino(),
+        get_inode(&metadata),
         get_mode_string(&metadata),
-        metadata.uid(),
-        metadata.gid(),
+        get_uid(&metadata),
+        get_gid(&metadata),
         metadata.len(),
         atime,
         mtime,
@@ -310,7 +310,18 @@ fn get_mode_string(metadata: &fs::Metadata) -> String {
     let other_w = if mode & 0o002 != 0 { "w" } else { "-" };
     let other_x = if mode & 0o001 != 0 { "x" } else { "-" };
     
-    format!("{}{}{}{}{}{}{}{}{}{}", file_type, user_r, user_w, user_x, group_r, group_w, group_x, other_r, other_w, other_x)
+        format!("{}{}{}{}{}{}{}{}{}{}", file_type, user_r, user_w, user_x, group_r, group_w, group_x, other_r, other_w, other_x)
+    }
+    
+    #[cfg(not(unix))]
+    {
+        // On Windows, return a simplified mode string
+        if metadata.is_dir() {
+            "d/drwxrwxrwx".to_string()
+        } else {
+            "-/-rwxrwxrwx".to_string()
+        }
+    }
 }
 
 /// Generate a bodyfile with a limited scope for testing or specific directories

@@ -122,10 +122,10 @@ fn test_compression_by_file_type() -> Result<()> {
         Artifact {
             name: "text_file".to_string(),
             artifact_type: match std::env::consts::OS {
-                "windows" => ArtifactType::Windows(WindowsArtifactType::File),
-                "linux" => ArtifactType::Linux(LinuxArtifactType::File),
-                "macos" => ArtifactType::MacOS(MacOSArtifactType::File),
-                _ => ArtifactType::Linux(LinuxArtifactType::File),
+                "windows" => ArtifactType::FileSystem,
+                "linux" => ArtifactType::FileSystem,
+                "macos" => ArtifactType::FileSystem,
+                _ => ArtifactType::FileSystem,
             },
             source_path: temp_dir.path().join("text.txt").to_string_lossy().to_string(),
             destination_name: "collected_text.txt".to_string(),
@@ -137,10 +137,10 @@ fn test_compression_by_file_type() -> Result<()> {
         Artifact {
             name: "zip_file".to_string(),
             artifact_type: match std::env::consts::OS {
-                "windows" => ArtifactType::Windows(WindowsArtifactType::File),
-                "linux" => ArtifactType::Linux(LinuxArtifactType::File),
-                "macos" => ArtifactType::MacOS(MacOSArtifactType::File),
-                _ => ArtifactType::Linux(LinuxArtifactType::File),
+                "windows" => ArtifactType::FileSystem,
+                "linux" => ArtifactType::FileSystem,
+                "macos" => ArtifactType::FileSystem,
+                _ => ArtifactType::FileSystem,
             },
             source_path: temp_dir.path().join("already.zip").to_string_lossy().to_string(),
             destination_name: "collected_zip.zip".to_string(),
@@ -211,10 +211,10 @@ fn test_collection_to_zip() -> Result<()> {
         artifacts.push(Artifact {
             name: filename.to_string(),
             artifact_type: match std::env::consts::OS {
-                "windows" => ArtifactType::Windows(WindowsArtifactType::File),
-                "linux" => ArtifactType::Linux(LinuxArtifactType::File),
-                "macos" => ArtifactType::MacOS(MacOSArtifactType::File),
-                _ => ArtifactType::Linux(LinuxArtifactType::File),
+                "windows" => ArtifactType::FileSystem,
+                "linux" => ArtifactType::FileSystem,
+                "macos" => ArtifactType::FileSystem,
+                _ => ArtifactType::FileSystem,
             },
             source_path: file_path.to_string_lossy().to_string(),
             destination_name: format!("collected_{}", filename),

@@ -210,7 +210,7 @@ fn is_privilege_enabled(h_token: HANDLE, luid: &LUID) -> Result<bool> {
         ],
     };
     
-    let mut has_privilege: FALSE = 0;
+    let mut has_privilege: i32 = FALSE;
     
     // Check if privilege is enabled
     let check_result = unsafe {

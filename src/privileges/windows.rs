@@ -23,7 +23,7 @@ pub fn enable_privileges() -> Result<()> {
 #[cfg(target_os = "windows")]
 #[allow(dead_code)]
 pub fn is_admin() -> bool {
-    use winapi::um::securitybaseapi::IsUserAnAdmin;
+    use winapi::um::shellapi::IsUserAnAdmin;
     unsafe { IsUserAnAdmin() != 0 }
 }
 
