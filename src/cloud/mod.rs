@@ -67,21 +67,23 @@
 //! ### SFTP Upload
 //!
 //! ```no_run
-//! use rust_collector::cloud::sftp::upload_to_sftp;
-//! use std::path::Path;
+//! use rust_collector::cloud::sftp::{upload_to_sftp, SFTPConfig};
+//! use std::path::{Path, PathBuf};
 //!
-//! # fn example() -> anyhow::Result<()> {
+//! # async fn example() -> anyhow::Result<()> {
 //! let local_path = Path::new("/tmp/collection.zip");
-//! let remote_path = "/forensics/case123/collection.zip";
 //!
-//! upload_to_sftp(
-//!     "forensics.example.com",
-//!     22,
-//!     "investigator",
-//!     Some("/home/user/.ssh/id_rsa"),
-//!     local_path,
-//!     remote_path,
-//! )?;
+//! let config = SFTPConfig {
+//!     host: "forensics.example.com".to_string(),
+//!     port: 22,
+//!     username: "investigator".to_string(),
+//!     private_key_path: PathBuf::from("/home/user/.ssh/id_rsa"),
+//!     remote_base_path: "/forensics/case123/".to_string(),
+//!     connection_timeout_sec: 30,
+//!     concurrent_connections: 4,
+//! };
+//!
+//! upload_to_sftp(local_path, config).await?;
 //!
 //! println!("Upload completed successfully");
 //! # Ok(())
