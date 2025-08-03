@@ -3,6 +3,18 @@
 //! This module provides functionality for collecting memory from running processes.
 //! It supports dumping memory regions from processes based on various filters and
 //! organizing the output in a structured format.
+//!
+//! ## Architecture
+//!
+//! The memory collection system uses a unified approach with automatic fallback:
+//!
+//! 1. **Primary**: MemProcFS - Advanced memory forensics library (when available)
+//! 2. **Fallback**: Platform-specific implementations:
+//!    - Windows: Native Windows API
+//!    - Linux: `/proc` filesystem
+//!    - macOS: Mach VM APIs
+//!
+//! The system automatically selects the best available implementation at runtime.
 
 pub mod models;
 pub mod filters;
@@ -69,24 +81,12 @@ pub fn collect_process_memory(
 pub fn is_memory_collection_available() -> bool {
     #[cfg(feature = "memory_collection")]
     {
-        // Try to create a MemProcFS collector
-        use crate::collectors::memory::memprocfs::collector::MemProcFSCollector;
-        match <MemProcFSCollector as MemoryCollectorImpl>::new() {
+        // Check if any memory collector implementation is available
+        match platforms::get_memory_collector() {
             Ok(_) => true,
             Err(e) => {
-                warn!("MemProcFS memory collection is not available: {}", e);
-                
-                // Fall back to platform-specific implementation
-                match platforms::get_memory_collector() {
-                    Ok(_) => {
-                        info!("Using legacy platform-specific memory collection");
-                        true
-                    },
-                    Err(e) => {
-                        warn!("Legacy memory collection is not available: {}", e);
-                        false
-                    }
-                }
+                warn!("Memory collection is not available: {}", e);
+                false
             }
         }
     }

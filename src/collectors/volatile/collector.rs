@@ -69,7 +69,7 @@ impl VolatileDataCollector {
     }
     
     /// Collect system information
-    fn collect_system_info(&self) -> Result<SystemInfo> {
+    pub fn collect_system_info(&self) -> Result<SystemInfo> {
         debug!("Collecting system information");
         
         let cpu_info = CpuInfo {
@@ -91,7 +91,7 @@ impl VolatileDataCollector {
     }
     
     /// Collect process information
-    fn collect_processes(&self) -> Result<Vec<ProcessInfo>> {
+    pub fn collect_processes(&self) -> Result<Vec<ProcessInfo>> {
         debug!("Collecting process information");
         
         let mut processes = Vec::new();
@@ -125,7 +125,7 @@ impl VolatileDataCollector {
     }
     
     /// Collect network information
-    fn collect_network(&mut self) -> Result<NetworkInfo> {
+    pub fn collect_network(&mut self) -> Result<NetworkInfo> {
         debug!("Collecting network information");
         
         // Refresh network information
@@ -160,7 +160,7 @@ impl VolatileDataCollector {
     }
     
     /// Collect memory information
-    fn collect_memory(&mut self) -> Result<MemoryInfo> {
+    pub fn collect_memory(&mut self) -> Result<MemoryInfo> {
         debug!("Collecting memory information");
         
         // Refresh memory information
@@ -177,7 +177,7 @@ impl VolatileDataCollector {
     }
     
     /// Collect disk information
-    fn collect_disks(&mut self) -> Result<Vec<DiskInfo>> {
+    pub fn collect_disks(&mut self) -> Result<Vec<DiskInfo>> {
         debug!("Collecting disk information");
         
         // Refresh disks list

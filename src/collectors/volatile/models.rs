@@ -20,7 +20,7 @@ pub struct CpuInfo {
 }
 
 /// Process information data structure
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ProcessInfo {
     pub pid: u32,
     pub name: String,

@@ -11,6 +11,7 @@ use crate::models::ArtifactMetadata;
 use crate::config::{Artifact, ArtifactType, WindowsArtifactType};
 use crate::collectors::platforms;
 use crate::collectors::regex::RegexCollector;
+use crate::collectors::permission_tracker::PermissionTracker;
 
 /// Trait for artifact collectors.
 /// 
@@ -153,6 +154,9 @@ pub async fn collect_artifacts_parallel(
     let max_concurrent = std::cmp::min(num_cpus::get() * 2, 32); // Limit concurrency
     let semaphore = Arc::new(Semaphore::new(max_concurrent));
     
+    // Create permission tracker to monitor permission-related failures
+    let permission_tracker = Arc::new(PermissionTracker::new());
+    
     // Get the platform-specific collector
     let collector = Arc::new(platforms::get_platform_collector());
     
@@ -168,6 +172,7 @@ pub async fn collect_artifacts_parallel(
         let collector = Arc::clone(&collector);
         let results = Arc::clone(&results);
         let semaphore = Arc::clone(&semaphore);
+        let permission_tracker = Arc::clone(&permission_tracker);
         let artifact = artifact.clone(); // Clone the artifact for the async move block
         let fs_dir = fs_dir.clone();
         let base_dir = base_dir.to_path_buf();
@@ -219,10 +224,21 @@ pub async fn collect_artifacts_parallel(
                         },
                         Err(e) => {
                             // If the artifact is required, report the error but continue
+                            let error_msg = e.to_string();
+                            
+                            // Track permission failures
+                            if PermissionTracker::is_permission_error(&error_msg) {
+                                permission_tracker.record_permission_failure(&artifact.name).await;
+                            }
+                            
                             if artifact.required {
-                                warn!("Failed to collect required regex artifact {}: {}", artifact.name, e);
+                                if error_msg.contains("Permission denied") {
+                                    warn!("⚠️  Failed to collect required regex artifact '{}': {}", artifact.name, error_msg);
+                                } else {
+                                    warn!("Failed to collect required regex artifact '{}': {}", artifact.name, error_msg);
+                                }
                             } else {
-                                debug!("Failed to collect optional regex artifact {}: {}", artifact.name, e);
+                                debug!("Failed to collect optional regex artifact '{}': {}", artifact.name, error_msg);
                             }
                         }
                     }
@@ -240,10 +256,21 @@ pub async fn collect_artifacts_parallel(
                         },
                         Err(e) => {
                             // If the artifact is required, report the error but continue
+                            let error_msg = e.to_string();
+                            
+                            // Track permission failures
+                            if PermissionTracker::is_permission_error(&error_msg) {
+                                permission_tracker.record_permission_failure(&artifact.name).await;
+                            }
+                            
                             if artifact.required {
-                                warn!("Failed to collect required artifact {}: {}", artifact.name, e);
+                                if error_msg.contains("Permission denied") {
+                                    warn!("⚠️  Failed to collect required artifact '{}': {}", artifact.name, error_msg);
+                                } else {
+                                    warn!("Failed to collect required artifact '{}': {}", artifact.name, error_msg);
+                                }
                             } else {
-                                debug!("Failed to collect optional artifact {}: {}", artifact.name, e);
+                                debug!("Failed to collect optional artifact '{}': {}", artifact.name, error_msg);
                             }
                         }
                     }
@@ -262,10 +289,21 @@ pub async fn collect_artifacts_parallel(
                     },
                     Err(e) => {
                         // If the artifact is required, report the error but continue
+                        let error_msg = e.to_string();
+                        
+                        // Track permission failures
+                        if PermissionTracker::is_permission_error(&error_msg) {
+                            permission_tracker.record_permission_failure(&artifact.name).await;
+                        }
+                        
                         if artifact.required {
-                            warn!("Failed to collect required artifact {}: {}", artifact.name, e);
+                            if error_msg.contains("Permission denied") {
+                                warn!("⚠️  Failed to collect required artifact '{}': {}", artifact.name, error_msg);
+                            } else {
+                                warn!("Failed to collect required artifact '{}': {}", artifact.name, error_msg);
+                            }
                         } else {
-                            debug!("Failed to collect optional artifact {}: {}", artifact.name, e);
+                            debug!("Failed to collect optional artifact '{}': {}", artifact.name, error_msg);
                         }
                     }
                 }
@@ -278,6 +316,9 @@ pub async fn collect_artifacts_parallel(
     
     // Execute all futures concurrently with controlled parallelism
     future::join_all(futures).await;
+    
+    // Report permission failures if any occurred
+    permission_tracker.report_failures().await;
     
     // Extract results from the mutex
     let final_results = results.lock().await.clone();

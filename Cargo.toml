@@ -100,3 +100,7 @@ harness = false
 [[bin]]
 name = "perf_test"
 path = "src/bin/perf_test.rs"
+
+[[bin]]
+name = "benchmark"
+path = "src/bin/benchmark.rs"

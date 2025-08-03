@@ -29,11 +29,23 @@ impl FallbackCollector {
         
         // Get file metadata before copying
         let metadata = fs::metadata(source)
-            .context(format!("Failed to get metadata for {}", source.display()))?;
+            .map_err(|e| {
+                if e.kind() == io::ErrorKind::PermissionDenied {
+                    anyhow::anyhow!("Permission denied reading metadata for {}. Try running with elevated privileges.", source.display())
+                } else {
+                    anyhow::anyhow!("Failed to get metadata for {}: {}", source.display(), e)
+                }
+            })?;
         
         // Copy the file
         fs::copy(source, dest)
-            .context(format!("Failed to copy {} to {}", source.display(), dest.display()))?;
+            .map_err(|e| {
+                if e.kind() == io::ErrorKind::PermissionDenied {
+                    anyhow::anyhow!("Permission denied copying {}. Try running with elevated privileges.", source.display())
+                } else {
+                    anyhow::anyhow!("Failed to copy {} to {}: {}", source.display(), dest.display(), e)
+                }
+            })?;
         
         // Get current time for metadata
         let collection_time = chrono::Utc::now().to_rfc3339();
@@ -75,7 +87,13 @@ impl FallbackCollector {
         
         // Get directory metadata
         let metadata = fs::metadata(source)
-            .context(format!("Failed to get metadata for {}", source.display()))?;
+            .map_err(|e| {
+                if e.kind() == io::ErrorKind::PermissionDenied {
+                    anyhow::anyhow!("Permission denied reading metadata for directory {}. Try running with elevated privileges.", source.display())
+                } else {
+                    anyhow::anyhow!("Failed to get metadata for {}: {}", source.display(), e)
+                }
+            })?;
         
         // Recursively copy directory contents
         self.copy_dir_contents(source, dest)?;
@@ -151,6 +169,8 @@ impl ArtifactCollector for FallbackCollector {
             Err(e) => {
                 if e.kind() == io::ErrorKind::NotFound {
                     return Err(anyhow::anyhow!("Source not found: {}", source_path.display()));
+                } else if e.kind() == io::ErrorKind::PermissionDenied {
+                    return Err(anyhow::anyhow!("Permission denied accessing: {}. Try running with elevated privileges or check file permissions.", source_path.display()));
                 } else {
                     return Err(anyhow::anyhow!("Failed to access source: {}", e));
                 }

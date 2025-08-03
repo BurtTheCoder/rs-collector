@@ -56,26 +56,8 @@ impl MemoryCollector {
         process_filter: ProcessFilter,
         region_filter: MemoryRegionFilter,
     ) -> Result<Self> {
-        // Try to use MemProcFS implementation first
-        #[cfg(feature = "memory_collection")]
-        {
-            match crate::collectors::memory::memprocfs::MemProcFSCollector::new() {
-                Ok(impl_collector) => {
-                    info!("Using MemProcFS for memory collection");
-                    return Ok(Self {
-                        options,
-                        process_filter,
-                        region_filter,
-                        platform_impl: Box::new(impl_collector),
-                    });
-                },
-                Err(e) => {
-                    warn!("MemProcFS not available, falling back to platform-specific implementation: {}", e);
-                }
-            }
-        }
-        
-        // Fall back to platform-specific implementation
+        // Get the best available memory collector implementation
+        // This will try MemProcFS first, then fall back to platform-specific
         let platform_impl = platforms::get_memory_collector()?;
         
         Ok(Self {

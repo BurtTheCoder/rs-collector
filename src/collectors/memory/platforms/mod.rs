@@ -45,19 +45,42 @@ pub trait MemoryCollectorImpl: Send + Sync {
 }
 
 /// Get the appropriate memory collector implementation for the current platform
+/// 
+/// This function attempts to use MemProcFS first if available, then falls back
+/// to platform-specific implementations.
 pub fn get_memory_collector() -> Result<Box<dyn MemoryCollectorImpl>> {
+    // Try MemProcFS first if the feature is enabled
+    #[cfg(feature = "memory_collection")]
+    {
+        use crate::collectors::memory::memprocfs::MemProcFSCollector;
+        
+        match MemProcFSCollector::new() {
+            Ok(collector) => {
+                log::info!("Using MemProcFS for memory collection");
+                return Ok(Box::new(collector));
+            }
+            Err(e) => {
+                log::debug!("MemProcFS initialization failed, falling back to platform-specific: {}", e);
+            }
+        }
+    }
+    
+    // Fall back to platform-specific implementations
     #[cfg(target_os = "windows")]
     {
+        log::info!("Using Windows native memory collection");
         Ok(Box::new(windows::WindowsMemoryCollector::new()?))
     }
     
     #[cfg(target_os = "linux")]
     {
+        log::info!("Using Linux /proc-based memory collection");
         Ok(Box::new(linux::LinuxMemoryCollector::new()?))
     }
     
     #[cfg(target_os = "macos")]
     {
+        log::info!("Using macOS mach_vm memory collection");
         Ok(Box::new(macos::MacOSMemoryCollector::new()?))
     }
     
