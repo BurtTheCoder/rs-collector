@@ -1990,6 +1990,7 @@ dependencies = [
  "futures-util",
  "hostname",
  "include_dir",
+ "lazy_static",
  "libc",
  "log",
  "mach",

@@ -28,10 +28,15 @@ pub fn enable_privileges() -> Result<()> {
         "SeDebugPrivilege",
     ];
     
+    // SAFETY: GetCurrentProcess() returns a pseudo-handle to the current process.
+    // This handle does not need to be closed and is always valid.
     let h_process = unsafe { GetCurrentProcess() };
     let mut h_token: HANDLE = ptr::null_mut();
     
     // Open the process token
+    // SAFETY: OpenProcessToken is safe to call with a valid process handle and
+    // a mutable pointer to receive the token handle. The h_process is valid
+    // (from GetCurrentProcess) and h_token is properly initialized to null.
     let token_result = unsafe {
         OpenProcessToken(
             h_process,
@@ -83,6 +88,10 @@ fn enable_privilege(h_token: HANDLE, privilege_name: &str) -> Result<bool> {
     let wide_name = U16CString::from_str(privilege_name)?;
     
     // Look up the privilege value
+    // SAFETY: LookupPrivilegeValueW is safe to call with:
+    // - null system name (uses local system)
+    // - valid wide string pointer from U16CString
+    // - valid mutable pointer to LUID structure
     let lookup_result = unsafe {
         LookupPrivilegeValueW(
             ptr::null(),
@@ -113,6 +122,11 @@ fn enable_privilege(h_token: HANDLE, privilege_name: &str) -> Result<bool> {
     };
     
     // Adjust token privileges
+    // SAFETY: AdjustTokenPrivileges is safe to call with:
+    // - Valid token handle from OpenProcessToken
+    // - FALSE to not disable all privileges
+    // - Valid pointer to TOKEN_PRIVILEGES structure
+    // - 0 and null pointers for optional output parameters
     let adjust_result = unsafe {
         AdjustTokenPrivileges(
             h_token,
@@ -129,6 +143,7 @@ fn enable_privilege(h_token: HANDLE, privilege_name: &str) -> Result<bool> {
         return Err(anyhow!("AdjustTokenPrivileges failed: {}", err));
     }
     
+    // SAFETY: GetLastError() is always safe to call and returns the last error code
     let last_error = unsafe { winapi::um::errhandlingapi::GetLastError() };
     if last_error != 0 {
         let err = io::Error::from_raw_os_error(last_error as i32);
@@ -142,6 +157,11 @@ fn enable_privilege(h_token: HANDLE, privilege_name: &str) -> Result<bool> {
 fn is_privilege_enabled(h_token: HANDLE, luid: &LUID) -> Result<bool> {
     // First, get the required size for the buffer
     let mut return_length: DWORD = 0;
+    // SAFETY: GetTokenInformation is safe to call with:
+    // - Valid token handle
+    // - TokenPrivileges as the information class
+    // - null buffer and 0 size to query required size
+    // - Valid pointer to receive the required length
     let token_info_result = unsafe {
         GetTokenInformation(
             h_token,
@@ -157,6 +177,12 @@ fn is_privilege_enabled(h_token: HANDLE, luid: &LUID) -> Result<bool> {
     let mut buffer = vec![0u8; buffer_size];
     
     // Get token privileges
+    // SAFETY: GetTokenInformation is safe to call with:
+    // - Valid token handle
+    // - TokenPrivileges as the information class  
+    // - Valid buffer with sufficient size (from previous call)
+    // - Buffer size matches allocated size
+    // - Valid pointer to receive actual data length
     let token_info_result = unsafe {
         GetTokenInformation(
             h_token,

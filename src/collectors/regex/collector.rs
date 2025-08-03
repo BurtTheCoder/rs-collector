@@ -94,6 +94,7 @@ mod tests {
     use tempfile::TempDir;
     use std::fs;
     use std::collections::HashMap;
+    use crate::config::{ArtifactType, RegexConfig};
 
     #[test]
     fn test_regex_collector_new() {

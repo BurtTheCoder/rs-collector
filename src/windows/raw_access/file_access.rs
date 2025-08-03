@@ -31,6 +31,14 @@ pub fn check_backup_api_available() -> bool {
         Err(_) => return false,
     };
     
+    // SAFETY: CreateFileW is safe to call with:
+    // - Valid wide string pointer from to_wide_string
+    // - GENERIC_READ for read-only access
+    // - Full sharing mode to allow other processes to access the file
+    // - null security attributes (default security)
+    // - OPEN_EXISTING to only open existing files
+    // - FILE_FLAG_BACKUP_SEMANTICS to open directories and use backup privileges
+    // - null template file handle
     let handle = unsafe {
         CreateFileW(
             wide_path.as_ptr(),
@@ -48,6 +56,7 @@ pub fn check_backup_api_available() -> bool {
     }
     
     // Close the handle and return success
+    // SAFETY: CloseHandle is safe to call with a valid handle from CreateFileW
     unsafe { CloseHandle(handle) };
     true
 }

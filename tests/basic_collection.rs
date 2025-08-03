@@ -43,8 +43,8 @@ fn test_basic_file_collection() -> Result<()> {
     // Verify the file was collected
     assert_eq!(results.len(), 1);
     
-    // Check that the output file exists
-    let collected_path = output_dir.path().join("collected_test_file.txt");
+    // Check that the output file exists (files are placed in 'fs' subdirectory)
+    let collected_path = output_dir.path().join("fs/collected_test_file.txt");
     assert!(collected_path.exists(), "Collected file should exist");
 
     // Verify content
@@ -52,7 +52,7 @@ fn test_basic_file_collection() -> Result<()> {
     assert_eq!(collected_content, "Test content for integration test");
 
     // Verify metadata
-    let (path, metadata) = results.iter().next().unwrap();
+    let (_key, metadata) = results.iter().next().unwrap();
     assert_eq!(metadata.file_size, 33); // Length of test content
     assert!(metadata.collection_time.len() > 0);
 
@@ -98,7 +98,7 @@ fn test_multiple_artifact_collection() -> Result<()> {
 
     // Check each collected file
     for (filename, expected_content) in &files {
-        let collected_path = output_dir.path().join(format!("collected_{}", filename));
+        let collected_path = output_dir.path().join("fs").join(format!("collected_{}", filename));
         assert!(collected_path.exists(), "File {} should be collected", filename);
         
         let collected_content = fs::read_to_string(&collected_path)?;
@@ -194,7 +194,8 @@ fn test_directory_structure_collection() -> Result<()> {
     assert_eq!(results.len(), 2);
 
     // Check directory structure was created
-    let collection_dir = output_dir.path().join("collection");
+    let fs_dir = output_dir.path().join("fs");
+    let collection_dir = fs_dir.join("collection");
     assert!(collection_dir.exists());
     assert!(collection_dir.join("root_file.txt").exists());
     

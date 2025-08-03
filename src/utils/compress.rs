@@ -85,7 +85,8 @@ fn compression_worker(
                 
                 // Acquire lock only when ready to write to the zip
                 {
-                    let mut zip = zip.lock().unwrap();
+                    let mut zip = zip.lock()
+                        .map_err(|e| anyhow::anyhow!("Failed to acquire zip lock: {}", e))?;
                     
                     // Start the file entry
                     zip.start_file(entry.rel_path.clone(), entry.options)
@@ -172,7 +173,7 @@ pub fn compress_artifacts(
     let thread_count = std::cmp::min(num_cpus::get(), 8);
     
     // Create worker threads
-    let workers = (0..thread_count).map(|i| {
+    let workers: Result<Vec<_>> = (0..thread_count).map(|i| {
         let worker_receiver = receiver.clone();
         let worker_zip = Arc::clone(&zip);
         
@@ -185,8 +186,9 @@ pub fn compress_artifacts(
                 }
                 true
             })
-            .unwrap()
-    }).collect::<Vec<_>>();
+            .context(format!("Failed to spawn compression worker {}", i))
+    }).collect();
+    let workers = workers?;
     
     // Create a list of files and directories
     let mut dirs = Vec::new();
@@ -194,12 +196,14 @@ pub fn compress_artifacts(
     
     // Signal end of work to all workers
     for _ in 0..thread_count {
-        sender.send(None).unwrap();
+        sender.send(None)
+            .context("Failed to send end-of-work signal to compression worker")?;
     }
     
     // Wait for all workers to finish
-    for worker in workers {
-        worker.join().unwrap();
+    for (i, worker) in workers.into_iter().enumerate() {
+        worker.join()
+            .map_err(|_| anyhow::anyhow!("Compression worker {} panicked", i))?;
     }
     
     // Finalize the zip file
@@ -207,7 +211,7 @@ pub fn compress_artifacts(
         let mut zip = Arc::try_unwrap(zip)
             .map_err(|_| anyhow::anyhow!("Failed to unwrap Arc"))?
             .into_inner()
-            .unwrap();
+            .map_err(|e| anyhow::anyhow!("Failed to get inner zip writer: {:?}", e))?;
             
         // Add all directory entries (after files to avoid conflicts)
         for dir in dirs {
@@ -250,7 +254,7 @@ fn scan_directory(
                 rel_path,
                 abs_path: path.clone(),
                 options,
-            })).unwrap();
+            })).context(format!("Failed to send file entry for {}", path.display()))?;
         }
     }
     
@@ -591,4 +595,51 @@ mod tests {
         // Clean up
         fs::remove_file(result).ok();
     }
+}
+
+/// Wrapper function for backward compatibility with tests and benchmarks.
+/// 
+/// Creates a ZIP file from a source directory. This is a simplified wrapper
+/// around `compress_artifacts` that uses default values for hostname and timestamp.
+/// 
+/// # Arguments
+/// 
+/// * `source_dir` - The directory to compress
+/// * `dest_path` - The path where the ZIP file should be created
+/// 
+/// # Returns
+/// 
+/// * `Result<()>` - Success or error
+/// 
+/// # Example
+/// 
+/// ```no_run
+/// use std::path::Path;
+/// use rust_collector::utils::compress::create_zip_file;
+/// 
+/// create_zip_file(
+///     Path::new("/tmp/source"),
+///     Path::new("/tmp/output.zip")
+/// )?;
+/// # Ok::<(), anyhow::Error>(())
+/// ```
+pub fn create_zip_file(source_dir: &Path, dest_path: &Path) -> Result<()> {
+    // Generate a default hostname and timestamp
+    let hostname = "collection";
+    let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S").to_string();
+    
+    // Call compress_artifacts which creates the ZIP in temp directory
+    let temp_zip = compress_artifacts(source_dir, hostname, &timestamp)?;
+    
+    // Move the ZIP file to the desired destination
+    fs::rename(&temp_zip, dest_path)
+        .or_else(|_| -> Result<()> {
+            // If rename fails (e.g., across filesystems), copy and delete
+            fs::copy(&temp_zip, dest_path)?;
+            fs::remove_file(&temp_zip)?;
+            Ok(())
+        })
+        .context("Failed to move ZIP file to destination")?;
+    
+    Ok(())
 }

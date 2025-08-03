@@ -12,6 +12,7 @@ use crate::collectors::collector::ArtifactCollector;
 use crate::config::parse_unix_env_vars;
 use crate::collectors::platforms::common::FallbackCollector;
 use crate::privileges::is_elevated;
+// Path validation is handled by the FallbackCollector
 
 /// macOS-specific artifact collector
 pub struct MacOSCollector {

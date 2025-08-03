@@ -5,9 +5,12 @@
 //! - Input sanitization
 //! - Privilege management helpers
 //! - Security configuration and policies
+//! - Credential scrubbing to prevent sensitive data exposure
 
 pub mod path_validator;
 pub mod config;
+pub mod credential_scrubber;
 
 pub use path_validator::{validate_path, sanitize_filename, validate_output_path};
 pub use config::{SecurityConfig, SecurityEvent, log_security_event};
+pub use credential_scrubber::{scrub_credentials, scrub_path, safe_error_message};

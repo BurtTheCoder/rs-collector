@@ -4,7 +4,7 @@
 
 use std::fs;
 use std::path::Path;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use anyhow::Result;
 use chrono;
 use rust_collector::utils::hash::calculate_sha256;
@@ -52,17 +52,18 @@ fn test_hash_performance(test_dir: &Path) -> Result<()> {
         
         // Time hash calculation
         let start = Instant::now();
-        let hash = calculate_sha256(&file_path)?;
+        let hash = calculate_sha256(&file_path, 1024)?; // 1GB max
         let duration = start.elapsed();
         
         let throughput = (size as f64) / duration.as_secs_f64() / 1024.0 / 1024.0;
         
+        let hash_str = hash.unwrap_or_else(|| "NO_HASH".to_string());
         println!(
             "  {} file: {:?} ({:.2} MB/s) - Hash: {}",
             label,
             duration,
             throughput,
-            &hash[..16]
+            if hash_str.len() >= 16 { &hash_str[..16] } else { &hash_str }
         );
     }
     

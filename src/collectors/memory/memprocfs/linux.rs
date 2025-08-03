@@ -5,7 +5,7 @@
 #[cfg(feature = "memory_collection")]
 use anyhow::{Result, Context};
 #[cfg(feature = "memory_collection")]
-use log::{debug, warn, info};
+use log::{warn, info};
 #[cfg(feature = "memory_collection")]
 use std::path::Path;
 #[cfg(feature = "memory_collection")]

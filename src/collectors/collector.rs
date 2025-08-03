@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use anyhow::{Result, Context};
 use futures::future::{self, FutureExt};
-use log::{info, warn, debug};
+use log::{info, warn, debug, error};
 use tokio::sync::{Mutex, Semaphore};
 
 use crate::models::ArtifactMetadata;
@@ -174,7 +174,13 @@ pub async fn collect_artifacts_parallel(
         
         async move {
             // Acquire a permit from the semaphore, limiting concurrency
-            let _permit = semaphore.acquire().await.unwrap();
+            let _permit = match semaphore.acquire().await {
+                Ok(permit) => permit,
+                Err(_) => {
+                    error!("Failed to acquire semaphore permit for artifact: {}", artifact.name);
+                    return (artifact, Err(anyhow::anyhow!("Failed to acquire semaphore permit")));
+                }
+            };
             
             info!("Collecting artifact: {}", artifact.name);
             
@@ -264,6 +270,9 @@ pub async fn collect_artifacts_parallel(
                     }
                 }
             }
+            
+            // Return the expected tuple
+            (artifact, Ok(()))
         }.boxed()
     });
     

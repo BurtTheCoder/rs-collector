@@ -381,7 +381,7 @@ impl UploadQueue {
         }
         
         // Sort parts by part number (must dereference to access the field)
-        completed_parts.sort_by_key(|part| part.part_number.unwrap());
+        completed_parts.sort_by_key(|part| part.part_number.unwrap_or(0));
         
         // Step 4: Complete the multipart upload
         let complete_request = CompleteMultipartUploadRequest {

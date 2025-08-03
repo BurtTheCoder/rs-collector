@@ -85,7 +85,8 @@ pub fn generate_bodyfile(output_path: &Path, options: &HashMap<String, String>) 
     } else {
         "# SHA256|name|inode|mode_as_string|UID|GID|size|atime|mtime|ctime|crtime"
     };
-    writeln!(writer.lock().unwrap(), "{}", header)?;
+    writeln!(writer.lock()
+        .map_err(|e| anyhow::anyhow!("Failed to acquire writer lock: {}", e))?, "{}", header)?;
     
     // Use walkdir to traverse the filesystem
     let root = Path::new("/");
@@ -109,11 +110,12 @@ pub fn generate_bodyfile(output_path: &Path, options: &HashMap<String, String>) 
                 max_hash_size_mb,
                 use_iso8601
             ) {
-                let mut writer = writer.lock().unwrap();
-                if writeln!(writer, "{}", line).is_ok() {
-                    let current = count.fetch_add(1, Ordering::SeqCst);
-                    if current % 10000 == 0 {
-                        info!("Processed {} files for bodyfile", current);
+                if let Ok(mut writer) = writer.lock() {
+                    if writeln!(writer, "{}", line).is_ok() {
+                        let current = count.fetch_add(1, Ordering::SeqCst);
+                        if current % 10000 == 0 {
+                            info!("Processed {} files for bodyfile", current);
+                        }
                     }
                 }
             }
@@ -361,7 +363,8 @@ pub fn generate_limited_bodyfile_with_options(
     } else {
         "# SHA256|name|inode|mode_as_string|UID|GID|size|atime|mtime|ctime|crtime"
     };
-    writeln!(writer.lock().unwrap(), "{}", header)?;
+    writeln!(writer.lock()
+        .map_err(|e| anyhow::anyhow!("Failed to acquire writer lock: {}", e))?, "{}", header)?;
     
     // Use walkdir to traverse the specified directory
     let walker = WalkDir::new(root_path)
@@ -380,11 +383,12 @@ pub fn generate_limited_bodyfile_with_options(
                 max_hash_size_mb,
                 use_iso8601
             ) {
-                let mut writer = writer.lock().unwrap();
-                if writeln!(writer, "{}", line).is_ok() {
-                    let current = count.fetch_add(1, Ordering::SeqCst);
-                    if current % 1000 == 0 {
-                        info!("Processed {} files for limited bodyfile", current);
+                if let Ok(mut writer) = writer.lock() {
+                    if writeln!(writer, "{}", line).is_ok() {
+                        let current = count.fetch_add(1, Ordering::SeqCst);
+                        if current % 1000 == 0 {
+                            info!("Processed {} files for limited bodyfile", current);
+                        }
                     }
                 }
             }

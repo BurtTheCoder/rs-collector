@@ -16,7 +16,6 @@ use tokio::time::Duration;
 use crate::cloud::sftp::SFTPConfig;
 
 // Constants
-const DEFAULT_BUFFER_SIZE: usize = 8 * 1024 * 1024; // 8MB
 const MAX_RETRIES: usize = 3;
 
 /// A stream that buffers data and uploads it to SFTP server.
@@ -27,9 +26,9 @@ const MAX_RETRIES: usize = 3;
 /// - Progress tracking with atomic counters for thread safety
 /// - Async/await compatible interface that implements AsyncWrite
 pub struct SFTPUploadStream {
-    session: Arc<Mutex<Session>>,
-    sftp: Arc<Mutex<Sftp>>,
-    remote_file: Arc<Mutex<ssh2::File>>,
+    _session: Arc<Mutex<Session>>,
+    _sftp: Arc<Mutex<Sftp>>,
+    _remote_file: Arc<Mutex<ssh2::File>>,
     remote_path: String,
     buffer: BytesMut,
     buffer_size: usize,
@@ -41,7 +40,7 @@ pub struct SFTPUploadStream {
 
 struct UploadTask {
     data: BytesMut,
-    offset: u64,
+    _offset: u64,
 }
 
 impl SFTPUploadStream {
@@ -172,9 +171,9 @@ impl SFTPUploadStream {
         });
         
         Ok(Self {
-            session,
-            sftp,
-            remote_file,
+            _session: session,
+            _sftp: sftp,
+            _remote_file: remote_file,
             remote_path: remote_path.to_string(),
             buffer: BytesMut::with_capacity(buffer_size),
             buffer_size,
@@ -249,7 +248,7 @@ impl SFTPUploadStream {
         let _ = self._upload_task.await;
         
         // Try to remove the remote file
-        let sftp_guard = match self.sftp.lock() {
+        let sftp_guard = match self._sftp.lock() {
             Ok(guard) => guard,
             Err(e) => {
                 return Err(anyhow!("Failed to lock SFTP: {}", e));
@@ -302,7 +301,7 @@ impl AsyncWrite for SFTPUploadStream {
             let offset = self.bytes_uploaded.load(Ordering::SeqCst);
             
             // Try to send the upload task
-            match self.sender.try_send(UploadTask { data, offset }) {
+            match self.sender.try_send(UploadTask { data, _offset: offset }) {
                 Ok(_) => {},
                 Err(e) => {
                     match e {
@@ -337,7 +336,7 @@ impl AsyncWrite for SFTPUploadStream {
             let offset = self.bytes_uploaded.load(Ordering::SeqCst);
             
             // Try to send the upload task
-            match self.sender.try_send(UploadTask { data, offset }) {
+            match self.sender.try_send(UploadTask { data, _offset: offset }) {
                 Ok(_) => {},
                 Err(e) => {
                     match e {

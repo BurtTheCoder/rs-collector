@@ -13,6 +13,7 @@ use crate::config::parse_unix_env_vars;
 use crate::collectors::platforms::common::FallbackCollector;
 use crate::privileges::is_elevated;
 use crate::constants::{PROC_PATH};
+// Path validation is handled by the FallbackCollector
 
 /// Linux-specific artifact collector
 pub struct LinuxCollector {

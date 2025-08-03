@@ -8,11 +8,11 @@ authors = ["Your Name <your.email@example.com>"]
 [features]
 default = []
 embed_config = []
-memory_collection = ["memprocfs", "pretty-hex"]  # Unified memory collection feature
-macos_memory = ["memory_collection"]             # For backward compatibility
-windows_memory = ["memory_collection"]           # For backward compatibility
-linux_memory = ["memory_collection"]             # For backward compatibility
-yara = ["memory_collection", "yara-sys"]         # Optional YARA scanning support
+memory_collection = ["dep:memprocfs", "dep:pretty-hex"]  # Unified memory collection feature
+macos_memory = ["memory_collection"]                      # For backward compatibility
+windows_memory = ["memory_collection"]                    # For backward compatibility
+linux_memory = ["memory_collection"]                      # For backward compatibility
+yara = ["memory_collection", "dep:yara-sys"]              # Optional YARA scanning support
 
 [dependencies]
 anyhow = "1.0"
@@ -56,6 +56,9 @@ cached = "0.46"
 regex = "1.10"
 crossbeam = "0.8"
 futures = "0.3"
+memprocfs = { version = "5.15.0", optional = true }
+pretty-hex = { version = "0.4.1", optional = true }
+lazy_static = "1.5.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = "0.52"
@@ -64,9 +67,7 @@ winreg = "0.52"
 mach = "0.3"
 
 # Optional dependencies for memory collection
-memprocfs = { version = "5.15.0", optional = true }
 mach-sys = { version = "0.5", optional = true }    # For macOS memory collection (legacy)
-pretty-hex = { version = "0.4.1", optional = true } # For memory dump formatting
 yara-sys = { version = "0.1", optional = true }    # For YARA scanning support
 
 [dev-dependencies]

@@ -8,6 +8,7 @@ use regex::Regex;
 use crate::models::ArtifactMetadata;
 use crate::collectors::platforms::common::FallbackCollector;
 use crate::collectors::regex::helpers::{path_matches_pattern, should_exclude_path, create_destination_path};
+// Path validation is handled by the FallbackCollector
 
 /// Directory walker for regex-based artifact collection
 pub struct DirectoryWalker<'a> {
