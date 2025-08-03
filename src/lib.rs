@@ -44,22 +44,23 @@
 //! ### Streaming Upload
 //!
 //! ```no_run
-//! use rust_collector::collectors::streaming::stream_artifacts_to_s3;
-//! use rust_collector::config::CollectionConfig;
-//! use std::path::Path;
+//! use rust_collector::cloud::s3::UploadQueue;
 //!
-//! # async fn example() -> anyhow::Result<()> {
-//! let config = CollectionConfig::default();
-//! let output_dir = Path::new("/tmp/upload");
-//! 
-//! stream_artifacts_to_s3(
-//!     &config.artifacts,
-//!     output_dir,
-//!     "my-bucket",
+//! # fn example() -> anyhow::Result<()> {
+//! // Create upload queue
+//! let queue = UploadQueue::new(
+//!     "my-forensics-bucket",
 //!     "collections/2024-01-01/",
 //!     Some("us-east-1"),
-//!     None,
-//! ).await?;
+//!     None
+//! );
+//!
+//! // Queue files for upload
+//! queue.queue_file("/tmp/artifact1.txt", "artifacts/file1.txt", true)?;
+//! queue.queue_file("/tmp/artifact2.log", "artifacts/file2.log", true)?;
+//!
+//! // Wait for uploads to complete
+//! queue.wait_for_completion();
 //! # Ok(())
 //! # }
 //! ```
