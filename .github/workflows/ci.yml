@@ -31,8 +31,23 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@${{ matrix.rust }}
+      - name: Install Rust toolchain (stable)
+        if: matrix.rust == 'stable'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+          components: rustfmt, clippy
+
+      - name: Install Rust toolchain (beta)
+        if: matrix.rust == 'beta'
+        uses: dtolnay/rust-toolchain@beta
+        with:
+          targets: ${{ matrix.target }}
+          components: rustfmt, clippy
+
+      - name: Install Rust toolchain (nightly)
+        if: matrix.rust == 'nightly'
+        uses: dtolnay/rust-toolchain@nightly
         with:
           targets: ${{ matrix.target }}
           components: rustfmt, clippy
@@ -146,6 +161,7 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
           components: llvm-tools-preview
 
       - name: Cache cargo registry

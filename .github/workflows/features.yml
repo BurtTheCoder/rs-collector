@@ -121,16 +121,26 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+      - name: Install Rust toolchain (stable)
+        if: matrix.rust == 'stable'
+        uses: dtolnay/rust-toolchain@stable
         with:
-          
-          toolchain: ${{ matrix.rust }}
-          
+          components: rustfmt, clippy
+
+      - name: Install Rust toolchain (beta)
+        if: matrix.rust == 'beta'
+        uses: dtolnay/rust-toolchain@beta
+        with:
+          components: rustfmt, clippy
+
+      - name: Install Rust toolchain (nightly)
+        if: matrix.rust == 'nightly'
+        uses: dtolnay/rust-toolchain@nightly
+        with:
           components: rustfmt, clippy
 
       - name: Cache cargo registry
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@v2.7.5
         with:
           key: ${{ runner.os }}-cargo-features-${{ matrix.rust }}
 
@@ -212,14 +222,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          
-          
-          
+          components: rustfmt, clippy
 
       - name: Cache cargo registry
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@v2.7.5
 
       - name: Create test config for embed_config
         if: contains(matrix.features, 'embed_config')
