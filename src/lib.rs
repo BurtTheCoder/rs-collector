@@ -46,8 +46,8 @@
 //! ```no_run
 //! use rust_collector::cloud::s3::UploadQueue;
 //!
-//! # fn example() -> anyhow::Result<()> {
-//! // Create upload queue
+//! # fn example() {
+//! // Create upload queue for tracking S3 uploads
 //! let queue = UploadQueue::new(
 //!     "my-forensics-bucket",
 //!     "collections/2024-01-01/",
@@ -55,13 +55,12 @@
 //!     None
 //! );
 //!
-//! // Queue files for upload
-//! queue.queue_file("/tmp/artifact1.txt", "artifacts/file1.txt", true)?;
-//! queue.queue_file("/tmp/artifact2.log", "artifacts/file2.log", true)?;
-//!
-//! // Wait for uploads to complete
-//! queue.wait_for_completion();
-//! # Ok(())
+//! // Get upload progress
+//! let (uploaded, total) = queue.get_progress();
+//! if total > 0 {
+//!     let percentage = (uploaded as f64 / total as f64) * 100.0;
+//!     println!("Upload progress: {:.1}%", percentage);
+//! }
 //! # }
 //! ```
 //!
