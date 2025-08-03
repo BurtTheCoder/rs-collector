@@ -2,7 +2,6 @@ use std::fs::{self, File};
 use std::io::{BufWriter, Write};
 use std::path::Path;
 use std::time::UNIX_EPOCH;
-use std::os::unix::fs::MetadataExt;
 use std::collections::HashMap;
 use std::sync::{Mutex, atomic::{AtomicUsize, Ordering}};
 
@@ -14,6 +13,45 @@ use rayon::prelude::*;
 use walkdir::WalkDir;
 
 use crate::utils::hash::calculate_sha256;
+
+/// Get inode number for the file
+#[cfg(unix)]
+fn get_inode(metadata: &fs::Metadata) -> u64 {
+    use std::os::unix::fs::MetadataExt;
+    metadata.ino()
+}
+
+#[cfg(not(unix))]
+fn get_inode(_metadata: &fs::Metadata) -> u64 {
+    // Windows doesn't have inodes, return 0
+    0
+}
+
+/// Get user ID
+#[cfg(unix)]
+fn get_uid(metadata: &fs::Metadata) -> u32 {
+    use std::os::unix::fs::MetadataExt;
+    metadata.uid()
+}
+
+#[cfg(not(unix))]
+fn get_uid(_metadata: &fs::Metadata) -> u32 {
+    // Windows doesn't have uid, return 0
+    0
+}
+
+/// Get group ID
+#[cfg(unix)]
+fn get_gid(metadata: &fs::Metadata) -> u32 {
+    use std::os::unix::fs::MetadataExt;
+    metadata.gid()
+}
+
+#[cfg(not(unix))]
+fn get_gid(_metadata: &fs::Metadata) -> u32 {
+    // Windows doesn't have gid, return 0
+    0
+}
 
 /// Convert Unix timestamp to ISO 8601 format
 fn unix_to_iso8601(timestamp: u64) -> String {
