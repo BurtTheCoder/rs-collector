@@ -22,18 +22,10 @@ allow = [
     "CC0-1.0",
 ]
 
-# List of explicitly disallowed licenses
-deny = [
-    "GPL-2.0",
-    "GPL-3.0",
-    "AGPL-3.0",
-    "LGPL-2.0",
-    "LGPL-2.1",
-    "LGPL-3.0",
-]
-
-# Lint level for licenses considered copyleft
-copyleft = "warn"
+# Confidence threshold for detecting licenses
+# Setting to 0.8 means 80% confidence required
+confidence-threshold = 0.8
+private = { ignore = true }
 
 # Exceptions for specific crates
 [[licenses.exceptions]]
@@ -59,8 +51,6 @@ allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 db-path = "~/.cargo/advisory-db"
 # The URL(s) of the advisory databases to use
 db-urls = ["https://github.com/rustsec/advisory-db"]
-# The lint level for security vulnerabilities
-vulnerability = "deny"
 
 # Ignore specific advisories
 ignore = [
