@@ -149,7 +149,12 @@ jobs:
 
       - name: Check with minimal versions
         run: |
+          # Generate minimal versions
           cargo +nightly -Z minimal-versions update
+          # Override problematic dependencies that don't specify correct minimal versions
+          # rusoto_signature requires log >= 0.4.14 for log_enabled! macro
+          cargo update -p log --precise 0.4.14
+          # Now check with these versions
           cargo check --all-features
 
   # Ensure the crate can be published
