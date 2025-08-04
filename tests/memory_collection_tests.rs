@@ -9,8 +9,8 @@ use tempfile::TempDir;
 use anyhow::Result;
 
 use rust_collector::config::{
-    CollectionConfig, Artifact, ArtifactType,
-    VolatileDataType, LinuxArtifactType, WindowsArtifactType, MacOSArtifactType
+    Artifact, ArtifactType,
+    VolatileDataType, WindowsArtifactType
 };
 use rust_collector::collectors::collector::collect_artifacts;
 
@@ -18,18 +18,17 @@ use rust_collector::collectors::collector::collect_artifacts;
 #[test]
 fn test_volatile_data_config() {
     let volatile_types = vec![
-        VolatileDataType::ProcessList,
+        VolatileDataType::SystemInfo,
+        VolatileDataType::Processes,
         VolatileDataType::NetworkConnections,
-        VolatileDataType::OpenHandles,
-        VolatileDataType::LoadedModules,
-        VolatileDataType::Services,
-        VolatileDataType::ScheduledTasks,
+        VolatileDataType::Memory,
+        VolatileDataType::Disks,
     ];
     
     for vtype in volatile_types {
         let artifact = Artifact {
             name: format!("volatile_{:?}", vtype),
-            artifact_type: ArtifactType::Volatile(vtype.clone()),
+            artifact_type: ArtifactType::VolatileData(vtype.clone()),
             source_path: String::new(),
             destination_name: format!("{:?}.json", vtype),
             description: Some(format!("Collect {:?}", vtype)),
@@ -38,7 +37,7 @@ fn test_volatile_data_config() {
             regex: None,
         };
         
-        assert!(matches!(artifact.artifact_type, ArtifactType::Volatile(_)));
+        assert!(matches!(artifact.artifact_type, ArtifactType::VolatileData(_)));
     }
 }
 
@@ -50,7 +49,7 @@ fn test_process_list_collection() -> Result<()> {
     let artifacts = vec![
         Artifact {
             name: "process_list".to_string(),
-            artifact_type: ArtifactType::Volatile(VolatileDataType::ProcessList),
+            artifact_type: ArtifactType::VolatileData(VolatileDataType::Processes),
             source_path: String::new(),
             destination_name: "processes.json".to_string(),
             description: Some("Current process list".to_string()),
@@ -79,7 +78,7 @@ fn test_network_connections_collection() -> Result<()> {
     let artifacts = vec![
         Artifact {
             name: "network_connections".to_string(),
-            artifact_type: ArtifactType::Volatile(VolatileDataType::NetworkConnections),
+            artifact_type: ArtifactType::VolatileData(VolatileDataType::NetworkConnections),
             source_path: String::new(),
             destination_name: "connections.json".to_string(),
             description: Some("Active network connections".to_string()),
@@ -100,16 +99,16 @@ fn test_multiple_volatile_collection() -> Result<()> {
     let output_dir = TempDir::new()?;
     
     let volatile_types = vec![
-        (VolatileDataType::ProcessList, "processes.json"),
+        (VolatileDataType::Processes, "processes.json"),
         (VolatileDataType::NetworkConnections, "connections.json"),
-        (VolatileDataType::Services, "services.json"),
+        (VolatileDataType::SystemInfo, "system_info.json"),
     ];
     
     let artifacts: Vec<Artifact> = volatile_types
         .into_iter()
         .map(|(vtype, filename)| Artifact {
             name: format!("{:?}", vtype),
-            artifact_type: ArtifactType::Volatile(vtype),
+            artifact_type: ArtifactType::VolatileData(vtype),
             source_path: String::new(),
             destination_name: filename.to_string(),
             description: Some(format!("Collect {:?}", filename)),
@@ -142,10 +141,7 @@ fn test_memory_artifact_config() {
         },
         Artifact {
             name: "pagefile".to_string(),
-            artifact_type: match std::env::consts::OS {
-                "windows" => ArtifactType::Windows(WindowsArtifactType::Pagefile),
-                _ => ArtifactType::Memory,
-            },
+            artifact_type: ArtifactType::Memory,
             source_path: match std::env::consts::OS {
                 "windows" => "C:\\pagefile.sys".to_string(),
                 _ => "/swap".to_string(),
@@ -162,7 +158,6 @@ fn test_memory_artifact_config() {
         // Verify artifact type
         match &artifact.artifact_type {
             ArtifactType::Memory => assert!(true),
-            ArtifactType::Windows(WindowsArtifactType::Pagefile) => assert!(true),
             _ => assert!(false, "Unexpected artifact type"),
         }
     }

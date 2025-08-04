@@ -9,6 +9,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  OPENSSL_NO_VENDOR: 1
 
 jobs:
   test:
@@ -61,12 +62,19 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libyara-dev libssl-dev pkg-config
+          sudo apt-get install -y libyara-dev libssl-dev pkg-config build-essential
+          # Set OpenSSL environment variables
+          echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
+          echo "OPENSSL_INCLUDE_DIR=/usr/include" >> $GITHUB_ENV
+          echo "OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
 
       - name: Install dependencies (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          brew install yara openssl pkg-config
+          brew install yara openssl@3 pkg-config
+          # Set OpenSSL environment variables for macOS
+          echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig" >> $GITHUB_ENV
 
       - name: Install dependencies (Windows)
         if: matrix.os == 'windows-latest'
@@ -133,7 +141,11 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libyara-dev libssl-dev pkg-config
+          sudo apt-get install -y libyara-dev libssl-dev pkg-config build-essential
+          # Set OpenSSL environment variables
+          echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
+          echo "OPENSSL_INCLUDE_DIR=/usr/include" >> $GITHUB_ENV
+          echo "OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
 
       - name: Check with minimal versions
         run: |
@@ -175,7 +187,11 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libyara-dev libssl-dev pkg-config
+          sudo apt-get install -y libyara-dev libssl-dev pkg-config build-essential
+          # Set OpenSSL environment variables
+          echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
+          echo "OPENSSL_INCLUDE_DIR=/usr/include" >> $GITHUB_ENV
+          echo "OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
@@ -215,7 +231,11 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libyara-dev libssl-dev pkg-config
+          sudo apt-get install -y libyara-dev libssl-dev pkg-config build-essential
+          # Set OpenSSL environment variables
+          echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
+          echo "OPENSSL_INCLUDE_DIR=/usr/include" >> $GITHUB_ENV
+          echo "OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
 
       - name: Run benchmarks
         run: |
