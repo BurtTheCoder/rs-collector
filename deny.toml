@@ -21,7 +21,7 @@ allow = [
     "Unicode-3.0",
     "Unlicense",
     "CC0-1.0",
-    "GPL-3.0-only",
+    "GPL-3.0",
 ]
 
 # Confidence threshold for detecting licenses

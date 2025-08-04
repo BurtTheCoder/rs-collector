@@ -3,7 +3,7 @@
 //! This module defines the data structures used for process memory collection,
 //! including memory regions, process information, and collection summaries.
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Memory region type

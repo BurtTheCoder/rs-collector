@@ -4,53 +4,53 @@
 //! like passwords, API keys, and tokens from strings before they are logged
 //! or displayed to users.
 
-use regex::Regex;
 use lazy_static::lazy_static;
+use regex::Regex;
 
 lazy_static! {
     /// Regex patterns for detecting various types of credentials
     static ref CREDENTIAL_PATTERNS: Vec<(Regex, &'static str)> = vec![
         // AWS Access Key ID
-        (Regex::new(r"(?i)(aws[_-]?access[_-]?key[_-]?id|aws[_-]?key[_-]?id|access[_-]?key[_-]?id)\s*[:=]\s*([A-Z0-9]{16,32})").unwrap(), 
+        (Regex::new(r"(?i)(aws[_-]?access[_-]?key[_-]?id|aws[_-]?key[_-]?id|access[_-]?key[_-]?id)\s*[:=]\s*([A-Z0-9]{16,32})").unwrap(),
          "$1=<REDACTED_AWS_KEY>"),
-        
+
         // AWS Secret Access Key
         (Regex::new(r"(?i)(aws[_-]?secret[_-]?access[_-]?key|aws[_-]?secret[_-]?key|secret[_-]?access[_-]?key|secret[_-]?key)\s*[:=]\s*([A-Za-z0-9/+=]{32,})").unwrap(),
          "$1=<REDACTED_AWS_SECRET>"),
-        
+
         // Generic API keys
         (Regex::new(r"(?i)(api[_-]?key|apikey)\s*[:=]\s*([A-Za-z0-9\-_]{20,})").unwrap(),
          "$1=<REDACTED_API_KEY>"),
-        
+
         // Generic passwords
         (Regex::new(r"(?i)(password|passwd|pwd)\s*[:=]\s*([^\s]+)").unwrap(),
          "$1=<REDACTED_PASSWORD>"),
-        
+
         // SSH private key paths
         (Regex::new(r"(?i)(private[_-]?key|ssh[_-]?key|key[_-]?file)\s*[:=]\s*([^\s]+\.pem|[^\s]+\.key|[^\s]+id_rsa[^\s]*)").unwrap(),
          "$1=<REDACTED_KEY_PATH>"),
-        
+
         // Bearer tokens
         (Regex::new(r"(?i)(bearer|authorization)\s*[:=]\s*(bearer\s+)?([A-Za-z0-9\-._~+/]+=*)").unwrap(),
          "$1=<REDACTED_TOKEN>"),
-        
+
         // GitHub tokens
         (Regex::new(r"(?i)(github[_-]?token|gh[_-]?token)\s*[:=]\s*([A-Za-z0-9_]{35,40})").unwrap(),
          "$1=<REDACTED_GITHUB_TOKEN>"),
-        
+
         // Generic tokens
         (Regex::new(r"(?i)(token|access[_-]?token|auth[_-]?token)\s*[:=]\s*([A-Za-z0-9\-._~+/]{20,})").unwrap(),
          "$1=<REDACTED_TOKEN>"),
-        
+
         // Database connection strings
         (Regex::new(r"(?i)(mysql|postgres|postgresql|mongodb|redis|mssql|oracle)://([^:]+):([^@]+)@").unwrap(),
          "$1://<REDACTED_USER>:<REDACTED_PASS>@"),
-        
+
         // Basic auth in URLs
         (Regex::new(r"(https?://)([^:]+):([^@]+)@").unwrap(),
          "$1<REDACTED_USER>:<REDACTED_PASS>@"),
     ];
-    
+
     /// Regex for detecting potential file paths containing credentials
     static ref SENSITIVE_PATH_PATTERNS: Vec<Regex> = vec![
         Regex::new(r"(?i)\.ssh/").unwrap(),
@@ -97,12 +97,12 @@ lazy_static! {
 /// ```
 pub fn scrub_credentials(input: &str) -> String {
     let mut result = input.to_string();
-    
+
     // Apply all credential patterns
     for (pattern, replacement) in CREDENTIAL_PATTERNS.iter() {
         result = pattern.replace_all(&result, *replacement).to_string();
     }
-    
+
     result
 }
 
@@ -144,7 +144,7 @@ pub fn scrub_path(path: &str) -> String {
     if !is_sensitive_path(path) {
         return path.to_string();
     }
-    
+
     // Find the last path separator
     if let Some(pos) = path.rfind(|c| c == '/' || c == '\\') {
         let dir = &path[..pos];
@@ -181,7 +181,7 @@ mod tests {
         let input = "Failed with aws_access_key_id=AKIAIOSFODNN7EXAMPLE";
         let result = scrub_credentials(input);
         assert_eq!(result, "Failed with aws_access_key_id=<REDACTED_AWS_KEY>");
-        
+
         let input = "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
         let result = scrub_credentials(input);
         assert_eq!(result, "AWS_SECRET_ACCESS_KEY=<REDACTED_AWS_SECRET>");
@@ -192,7 +192,7 @@ mod tests {
         let input = "Connection failed: password=mysecret123";
         let result = scrub_credentials(input);
         assert_eq!(result, "Connection failed: password=<REDACTED_PASSWORD>");
-        
+
         let input = "Login with passwd: supersecret!@#";
         let result = scrub_credentials(input);
         assert_eq!(result, "Login with passwd=<REDACTED_PASSWORD>");
@@ -209,14 +209,20 @@ mod tests {
     fn test_scrub_database_urls() {
         let input = "postgres://user:pass123@localhost:5432/db";
         let result = scrub_credentials(input);
-        assert_eq!(result, "postgres://<REDACTED_USER>:<REDACTED_PASS>@localhost:5432/db");
+        assert_eq!(
+            result,
+            "postgres://<REDACTED_USER>:<REDACTED_PASS>@localhost:5432/db"
+        );
     }
 
     #[test]
     fn test_scrub_basic_auth_urls() {
         let input = "Failed to connect to https://admin:secret@example.com/api";
         let result = scrub_credentials(input);
-        assert_eq!(result, "Failed to connect to https://<REDACTED_USER>:<REDACTED_PASS>@example.com/api");
+        assert_eq!(
+            result,
+            "Failed to connect to https://<REDACTED_USER>:<REDACTED_PASS>@example.com/api"
+        );
     }
 
     #[test]
@@ -226,7 +232,7 @@ mod tests {
         assert!(is_sensitive_path("C:\\Users\\test\\.kube\\config"));
         assert!(is_sensitive_path("/etc/ssl/private/server.key"));
         assert!(is_sensitive_path("/var/lib/app/secrets.yaml"));
-        
+
         assert!(!is_sensitive_path("/usr/bin/ls"));
         assert!(!is_sensitive_path("/home/user/documents/report.pdf"));
     }
@@ -237,23 +243,23 @@ mod tests {
             scrub_path("/home/user/.ssh/id_rsa"),
             "/home/user/.ssh/[REDACTED_SENSITIVE_FILE]"
         );
-        
+
         assert_eq!(
             scrub_path("C:\\Users\\test\\.aws\\credentials"),
             "C:\\Users\\test\\.aws/[REDACTED_SENSITIVE_FILE]"
         );
-        
-        assert_eq!(
-            scrub_path("/usr/bin/ls"),
-            "/usr/bin/ls"
-        );
+
+        assert_eq!(scrub_path("/usr/bin/ls"), "/usr/bin/ls");
     }
 
     #[test]
     fn test_safe_error_message() {
         let error = "password=secret123";
         let result = safe_error_message("Authentication failed", &error);
-        assert_eq!(result, "Authentication failed: password=<REDACTED_PASSWORD>");
+        assert_eq!(
+            result,
+            "Authentication failed: password=<REDACTED_PASSWORD>"
+        );
     }
 
     #[test]

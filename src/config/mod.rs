@@ -58,32 +58,21 @@ mod regex_config;
 /// on Windows, Linux, and macOS systems. Each platform has specific artifact
 /// types that correspond to forensically relevant data sources.
 pub use artifact_types::{
-    ArtifactType,
-    WindowsArtifactType,
-    LinuxArtifactType,
-    MacOSArtifactType,
-    VolatileDataType,
+    ArtifactType, LinuxArtifactType, MacOSArtifactType, VolatileDataType, WindowsArtifactType,
 };
 
 /// Main configuration structures
 ///
 /// These types define the structure of collection configurations, including
 /// individual artifact definitions and the overall collection configuration.
-pub use collection_config::{
-    Artifact,
-    CollectionConfig,
-    load_or_create_config,
-};
+pub use collection_config::{load_or_create_config, Artifact, CollectionConfig};
 
 /// Environment variable parsing utilities
 ///
 /// These functions handle platform-specific environment variable expansion,
 /// allowing artifact paths to use variables like %SystemRoot% on Windows
 /// or $HOME on Unix systems.
-pub use env_vars::{
-    parse_windows_env_vars,
-    parse_unix_env_vars,
-};
+pub use env_vars::{parse_unix_env_vars, parse_windows_env_vars};
 
 /// Regular expression configuration for file matching
 ///

@@ -16,11 +16,11 @@
 //!
 //! The system automatically selects the best available implementation at runtime.
 
-pub mod models;
-pub mod filters;
-pub mod export;
-pub mod platforms;
 pub mod collector;
+pub mod export;
+pub mod filters;
+pub mod models;
+pub mod platforms;
 
 // New memprocfs implementation
 #[cfg(feature = "memory_collection")]
@@ -32,11 +32,11 @@ use log::info;
 use log::warn;
 use std::path::Path;
 
-use crate::collectors::volatile::models::ProcessInfo;
 use crate::collectors::memory::collector::MemoryCollector;
 use crate::collectors::memory::models::MemoryCollectionSummary;
 #[cfg(feature = "memory_collection")]
 use crate::collectors::memory::platforms::MemoryCollectorImpl;
+use crate::collectors::volatile::models::ProcessInfo;
 
 /// Collect process memory based on command-line arguments
 pub fn collect_process_memory(
@@ -56,10 +56,10 @@ pub fn collect_process_memory(
         max_memory_size_mb,
         memory_regions,
     )?;
-    
+
     // Create memory directory
     let memory_dir = output_dir.as_ref().join("process_memory");
-    
+
     // Try to use MemProcFS collector first, fall back to platform-specific if needed
     #[cfg(feature = "memory_collection")]
     {
@@ -68,13 +68,16 @@ pub fn collect_process_memory(
             Ok(_) => {
                 info!("Using MemProcFS for memory collection");
                 // The collector will use MemProcFS internally
-            },
+            }
             Err(e) => {
-                warn!("MemProcFS not available, falling back to platform-specific implementation: {}", e);
+                warn!(
+                    "MemProcFS not available, falling back to platform-specific implementation: {}",
+                    e
+                );
             }
         }
     }
-    
+
     // Collect memory
     collector.collect_all(processes, memory_dir)
 }
@@ -92,7 +95,7 @@ pub fn is_memory_collection_available() -> bool {
             }
         }
     }
-    
+
     #[cfg(not(feature = "memory_collection"))]
     {
         warn!("Memory collection is not available: feature not enabled");

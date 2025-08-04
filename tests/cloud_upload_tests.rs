@@ -3,12 +3,12 @@
 //! These tests verify S3 and SFTP upload capabilities using mocked
 //! cloud services to avoid actual network dependencies.
 
-use std::fs;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::path::PathBuf;
-use tempfile::TempDir;
 use anyhow::Result;
+use std::fs;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use tempfile::TempDir;
 
 use rust_collector::cloud::s3::UploadQueue;
 use rust_collector::cloud::sftp::SFTPConfig;
@@ -17,13 +17,8 @@ use rust_collector::cloud::sftp::SFTPConfig;
 #[test]
 fn test_s3_upload_queue_creation() {
     // Test creating an upload queue
-    let queue = UploadQueue::new(
-        "test-bucket",
-        "test-prefix/",
-        Some("us-east-1"),
-        None
-    );
-    
+    let queue = UploadQueue::new("test-bucket", "test-prefix/", Some("us-east-1"), None);
+
     // Verify the queue was created successfully
     let (uploaded, total) = queue.get_progress();
     assert_eq!(uploaded, 0);
@@ -34,18 +29,13 @@ fn test_s3_upload_queue_creation() {
 #[test]
 fn test_s3_upload_queue() -> Result<()> {
     // Create upload queue with proper parameters
-    let queue = UploadQueue::new(
-        "test-bucket",
-        "test-prefix/",
-        Some("us-east-1"),
-        None
-    );
-    
+    let queue = UploadQueue::new("test-bucket", "test-prefix/", Some("us-east-1"), None);
+
     // Test progress tracking
     let (uploaded, total) = queue.get_progress();
     assert_eq!(uploaded, 0);
     assert_eq!(total, 0);
-    
+
     Ok(())
 }
 
@@ -59,7 +49,7 @@ fn test_sftp_config_variations() {
     assert_eq!(default_config.buffer_size_mb, 8);
     assert_eq!(default_config.connection_timeout_sec, 30);
     assert_eq!(default_config.max_retries, 3);
-    
+
     // Test with custom settings
     let custom_config = SFTPConfig {
         host: "sftp.example.com".to_string(),
@@ -72,7 +62,7 @@ fn test_sftp_config_variations() {
         connection_timeout_sec: 60,
         max_retries: 5,
     };
-    
+
     assert_eq!(custom_config.host, "sftp.example.com");
     assert_eq!(custom_config.port, 2222);
     assert_eq!(custom_config.concurrent_connections, 8);
@@ -83,26 +73,27 @@ fn test_sftp_config_variations() {
 fn test_upload_progress_tracking() {
     let total_bytes = Arc::new(AtomicU64::new(0));
     let uploaded_bytes = Arc::new(AtomicU64::new(0));
-    
+
     // Simulate file sizes
     let file_sizes = vec![1024, 2048, 4096];
     let total: u64 = file_sizes.iter().sum();
-    
+
     total_bytes.store(total, Ordering::SeqCst);
-    
+
     // Simulate progressive upload
     let mut uploaded = 0u64;
     for size in file_sizes {
         uploaded += size;
         uploaded_bytes.store(uploaded, Ordering::SeqCst);
-        
-        let progress = uploaded_bytes.load(Ordering::SeqCst) as f64 
-            / total_bytes.load(Ordering::SeqCst) as f64 * 100.0;
-        
+
+        let progress = uploaded_bytes.load(Ordering::SeqCst) as f64
+            / total_bytes.load(Ordering::SeqCst) as f64
+            * 100.0;
+
         assert!(progress > 0.0);
         assert!(progress <= 100.0);
     }
-    
+
     assert_eq!(uploaded_bytes.load(Ordering::SeqCst), total);
 }
 
@@ -111,21 +102,21 @@ fn test_upload_progress_tracking() {
 fn test_s3_multipart_calculations() {
     let threshold_mb = 100;
     let chunk_size_mb = 8;
-    
+
     let threshold_bytes = threshold_mb * 1024 * 1024;
     let chunk_size_bytes = chunk_size_mb * 1024 * 1024;
-    
+
     // Test file sizes
     let test_cases = vec![
-        (50 * 1024 * 1024, false),    // 50MB - below threshold
-        (100 * 1024 * 1024, true),     // 100MB - at threshold
-        (200 * 1024 * 1024, true),     // 200MB - above threshold
+        (50 * 1024 * 1024, false), // 50MB - below threshold
+        (100 * 1024 * 1024, true), // 100MB - at threshold
+        (200 * 1024 * 1024, true), // 200MB - above threshold
     ];
-    
+
     for (file_size, should_multipart) in test_cases {
         let is_multipart = file_size >= threshold_bytes;
         assert_eq!(is_multipart, should_multipart);
-        
+
         if is_multipart {
             let num_parts = (file_size + chunk_size_bytes - 1) / chunk_size_bytes;
             assert!(num_parts > 0);
@@ -138,7 +129,7 @@ fn test_s3_multipart_calculations() {
 fn test_retry_configuration() {
     let max_retries = 3;
     let base_delay_ms = 250;
-    
+
     // Calculate exponential backoff delays
     let delays: Vec<u64> = (0..max_retries)
         .map(|attempt| {
@@ -146,9 +137,9 @@ fn test_retry_configuration() {
             base_delay_ms * multiplier
         })
         .collect();
-    
+
     assert_eq!(delays, vec![250, 500, 1000]);
-    
+
     // Verify delays are capped at reasonable maximum
     let max_delay_ms = 30000; // 30 seconds
     for delay in delays {
@@ -160,15 +151,15 @@ fn test_retry_configuration() {
 #[test]
 fn test_concurrent_upload_limits() {
     let configs = vec![
-        (4, 100),   // 4 connections, 100 files
-        (8, 50),    // 8 connections, 50 files
-        (1, 10),    // 1 connection, 10 files
+        (4, 100), // 4 connections, 100 files
+        (8, 50),  // 8 connections, 50 files
+        (1, 10),  // 1 connection, 10 files
     ];
-    
+
     for (max_concurrent, total_files) in configs {
         let batches = (total_files + max_concurrent - 1) / max_concurrent;
         assert!(batches > 0);
-        
+
         // Last batch might be smaller
         let last_batch_size = total_files % max_concurrent;
         if last_batch_size == 0 && total_files > 0 {
@@ -184,13 +175,13 @@ fn test_concurrent_upload_limits() {
 fn test_s3_storage_classes() {
     let storage_classes = vec![
         "STANDARD",
-        "STANDARD_IA", 
+        "STANDARD_IA",
         "ONEZONE_IA",
         "INTELLIGENT_TIERING",
         "GLACIER",
         "DEEP_ARCHIVE",
     ];
-    
+
     // Test that all storage class strings are valid
     for class in storage_classes {
         assert!(!class.is_empty());
@@ -206,21 +197,23 @@ fn test_upload_path_normalization() {
         ("/var/log/syslog.1", "syslog.1"),
         ("relative/path/data.bin", "data.bin"),
     ];
-    
+
     for (input_path, expected_name) in test_paths {
         let path = PathBuf::from(input_path);
-        let filename = path.file_name()
+        let filename = path
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("unknown");
-        
+
         assert_eq!(filename, expected_name);
     }
-    
+
     // Test platform-specific behavior
     #[cfg(windows)]
     {
         let path = PathBuf::from("C:\\Windows\\System32\\config.sys");
-        let filename = path.file_name()
+        let filename = path
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("unknown");
         assert_eq!(filename, "config.sys");
@@ -233,29 +226,29 @@ fn test_upload_metadata() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let test_file = temp_dir.path().join("metadata_test.txt");
     fs::write(&test_file, "Test content for metadata")?;
-    
+
     let metadata = fs::metadata(&test_file)?;
-    
+
     // Verify metadata properties
     assert!(metadata.is_file());
     assert_eq!(metadata.len(), 25); // Length of "Test content for metadata"
     assert!(!metadata.is_dir());
-    
+
     // Test metadata for different file types
     let files = vec![
         ("text.txt", b"Plain text" as &[u8]),
         ("data.bin", &[0u8, 1, 2, 3, 4] as &[u8]),
         ("empty.dat", &[] as &[u8]),
     ];
-    
+
     for (filename, content) in files {
         let path = temp_dir.path().join(filename);
         fs::write(&path, content)?;
-        
+
         let meta = fs::metadata(&path)?;
         assert!(meta.is_file());
         assert_eq!(meta.len() as usize, content.len());
     }
-    
+
     Ok(())
 }

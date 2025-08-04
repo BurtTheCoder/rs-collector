@@ -1,58 +1,58 @@
-use std::path::{Path, PathBuf};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use futures::future::{self, FutureExt};
-use log::{info, warn, debug, error};
+use log::{debug, error, info, warn};
 use tokio::sync::{Mutex, Semaphore};
 
-use crate::models::ArtifactMetadata;
-use crate::config::{Artifact, ArtifactType, WindowsArtifactType};
+use crate::collectors::permission_tracker::PermissionTracker;
 use crate::collectors::platforms;
 use crate::collectors::regex::RegexCollector;
-use crate::collectors::permission_tracker::PermissionTracker;
+use crate::config::{Artifact, ArtifactType, WindowsArtifactType};
+use crate::models::ArtifactMetadata;
 
 /// Trait for artifact collectors.
-/// 
+///
 /// This trait defines the interface that all artifact collectors must implement.
 /// Collectors are responsible for gathering specific types of forensic artifacts
 /// from a system and storing them in a specified output directory.
-/// 
+///
 /// # Thread Safety
-/// 
+///
 /// Implementors must be `Send + Sync` to support concurrent collection operations.
 #[async_trait::async_trait]
 pub trait ArtifactCollector: Send + Sync {
     /// Collect a specific artifact and save it to the output directory.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `artifact` - The artifact configuration specifying what to collect
     /// * `output_dir` - Directory where the collected artifact should be saved
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// * `Ok(ArtifactMetadata)` - Metadata about the successfully collected artifact
     /// * `Err` - If collection fails or the artifact cannot be found
-    /// 
+    ///
     /// # Implementation Notes
-    /// 
+    ///
     /// Implementors should:
     /// - Preserve the original file metadata when possible
     /// - Handle platform-specific paths appropriately
     /// - Create necessary subdirectories in the output directory
     /// - Return detailed error messages for troubleshooting
     async fn collect(&self, artifact: &Artifact, output_dir: &Path) -> Result<ArtifactMetadata>;
-    
+
     /// Check if this collector supports a given artifact type.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `artifact_type` - The type of artifact to check
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// * `true` if this collector can handle the artifact type
     /// * `false` otherwise
     fn supports_artifact_type(&self, artifact_type: &ArtifactType) -> bool;
@@ -64,9 +64,9 @@ fn is_special_artifact(artifact_type: &ArtifactType) -> bool {
         // Windows special artifacts
         ArtifactType::Windows(WindowsArtifactType::MFT) => true,
         ArtifactType::Windows(WindowsArtifactType::USNJournal) => true,
-        
+
         // Other special artifacts that might not have standard paths
-        _ => false
+        _ => false,
     }
 }
 
@@ -76,15 +76,15 @@ fn get_destination_path(fs_dir: &Path, artifact: &Artifact) -> PathBuf {
     if is_special_artifact(&artifact.artifact_type) {
         return fs_dir.join(&artifact.destination_name);
     }
-    
+
     // For regular files, preserve the original path structure
     let source_path = Path::new(&artifact.source_path);
-    
+
     // Handle absolute paths by removing the leading separator
     let rel_path = if source_path.is_absolute() {
         // Convert /etc/passwd to etc/passwd or C:\Windows\System32 to Windows\System32
         let path_str = source_path.to_string_lossy();
-        
+
         // Handle Windows paths with drive letters
         if cfg!(windows) && path_str.chars().nth(1) == Some(':') {
             // Remove drive letter (e.g., C:\Windows -> Windows)
@@ -98,7 +98,7 @@ fn get_destination_path(fs_dir: &Path, artifact: &Artifact) -> PathBuf {
     } else {
         source_path.to_path_buf()
     };
-    
+
     fs_dir.join(rel_path)
 }
 
@@ -106,14 +106,16 @@ fn get_destination_path(fs_dir: &Path, artifact: &Artifact) -> PathBuf {
 fn handle_duplicate_filename(dest_path: &Path) -> PathBuf {
     if dest_path.exists() {
         // Add a numeric suffix to the filename
-        let file_stem = dest_path.file_stem()
+        let file_stem = dest_path
+            .file_stem()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "file".to_string());
-        
-        let extension = dest_path.extension()
+
+        let extension = dest_path
+            .extension()
             .map(|s| format!(".{}", s.to_string_lossy()))
             .unwrap_or_else(|| "".to_string());
-        
+
         let mut counter = 1;
         loop {
             let new_name = format!("{}_{}{}", file_stem, counter, extension);
@@ -136,36 +138,36 @@ fn normalize_path_for_storage(path: &Path) -> String {
 /// Collect artifacts based on configuration with parallel execution
 pub async fn collect_artifacts_parallel(
     artifacts: &[Artifact],
-    base_dir: &Path
+    base_dir: &Path,
 ) -> Result<HashMap<String, ArtifactMetadata>> {
     // Make sure base directory exists
     tokio::fs::create_dir_all(base_dir)
         .await
         .context("Failed to create base directory")?;
-    
+
     // Create a single 'fs' directory instead of type-based directories
     let fs_dir = base_dir.join("fs");
     tokio::fs::create_dir_all(&fs_dir)
         .await
         .context("Failed to create fs directory")?;
-    
+
     // Create a rate limiter to control concurrent artifact collection
     // This prevents overwhelming the system with too many concurrent I/O operations
     let max_concurrent = std::cmp::min(num_cpus::get() * 2, 32); // Limit concurrency
     let semaphore = Arc::new(Semaphore::new(max_concurrent));
-    
+
     // Create permission tracker to monitor permission-related failures
     let permission_tracker = Arc::new(PermissionTracker::new());
-    
+
     // Get the platform-specific collector
     let collector = Arc::new(platforms::get_platform_collector());
-    
+
     // Filter artifacts for the current platform
     let platform_artifacts = platforms::filter_artifacts_for_platform(artifacts);
-    
+
     // Shared results map protected by a mutex
     let results = Arc::new(Mutex::new(HashMap::new()));
-    
+
     // Process all artifacts in parallel with controlled concurrency
     let futures = platform_artifacts.iter().map(|artifact| {
         // Clone references for the async block
@@ -176,173 +178,232 @@ pub async fn collect_artifacts_parallel(
         let artifact = artifact.clone(); // Clone the artifact for the async move block
         let fs_dir = fs_dir.clone();
         let base_dir = base_dir.to_path_buf();
-        
+
         async move {
             // Acquire a permit from the semaphore, limiting concurrency
             let _permit = match semaphore.acquire().await {
                 Ok(permit) => permit,
                 Err(_) => {
-                    error!("Failed to acquire semaphore permit for artifact: {}", artifact.name);
-                    return (artifact, Err(anyhow::anyhow!("Failed to acquire semaphore permit")));
+                    error!(
+                        "Failed to acquire semaphore permit for artifact: {}",
+                        artifact.name
+                    );
+                    return (
+                        artifact,
+                        Err(anyhow::anyhow!("Failed to acquire semaphore permit")),
+                    );
                 }
             };
-            
+
             info!("Collecting artifact: {}", artifact.name);
-            
+
             // Determine output path based on original file path
             let output_path = get_destination_path(&fs_dir, &artifact);
-            
+
             // Handle potential duplicate filenames
             let final_output_path = handle_duplicate_filename(&output_path);
-            
+
             // Create parent directories if they don't exist
             if let Some(parent) = final_output_path.parent() {
                 if let Err(e) = tokio::fs::create_dir_all(parent).await {
                     warn!("Failed to create directory {}: {}", parent.display(), e);
                 }
             }
-            
+
             // Check if this is a regex-based artifact
             if let Some(regex_config) = &artifact.regex {
                 if regex_config.enabled {
                     // Use regex collector for this artifact
                     let regex_collector = RegexCollector::new();
                     let source_path = PathBuf::from(&artifact.source_path);
-                    
-                    match regex_collector.collect_with_regex(
-                        &artifact,
-                        &source_path,
-                        &final_output_path.parent().unwrap_or(&fs_dir)
-                    ).await {
+
+                    match regex_collector
+                        .collect_with_regex(
+                            &artifact,
+                            &source_path,
+                            &final_output_path.parent().unwrap_or(&fs_dir),
+                        )
+                        .await
+                    {
                         Ok(collected_items) => {
                             let mut map = results.lock().await;
                             for (path, metadata) in collected_items {
-                                let relative_path = normalize_path_for_storage(&path.strip_prefix(&base_dir).unwrap_or(&path));
+                                let relative_path = normalize_path_for_storage(
+                                    &path.strip_prefix(&base_dir).unwrap_or(&path),
+                                );
                                 map.insert(relative_path, metadata);
                             }
                             info!("Successfully collected regex artifact: {}", artifact.name);
-                        },
+                        }
                         Err(e) => {
                             // If the artifact is required, report the error but continue
                             let error_msg = e.to_string();
-                            
+
                             // Track permission failures
                             if PermissionTracker::is_permission_error(&error_msg) {
-                                permission_tracker.record_permission_failure(&artifact.name).await;
+                                permission_tracker
+                                    .record_permission_failure(&artifact.name)
+                                    .await;
                             }
-                            
+
                             if artifact.required {
                                 if error_msg.contains("Permission denied") {
-                                    warn!("⚠️  Failed to collect required regex artifact '{}': {}", artifact.name, error_msg);
+                                    warn!(
+                                        "⚠️  Failed to collect required regex artifact '{}': {}",
+                                        artifact.name, error_msg
+                                    );
                                 } else {
-                                    warn!("Failed to collect required regex artifact '{}': {}", artifact.name, error_msg);
+                                    warn!(
+                                        "Failed to collect required regex artifact '{}': {}",
+                                        artifact.name, error_msg
+                                    );
                                 }
                             } else {
-                                debug!("Failed to collect optional regex artifact '{}': {}", artifact.name, error_msg);
+                                debug!(
+                                    "Failed to collect optional regex artifact '{}': {}",
+                                    artifact.name, error_msg
+                                );
                             }
                         }
                     }
                 } else {
                     // Standard collection for non-regex artifacts
-                    match collector.collect(&artifact, &final_output_path.parent().unwrap_or(&fs_dir)).await {
+                    match collector
+                        .collect(&artifact, &final_output_path.parent().unwrap_or(&fs_dir))
+                        .await
+                    {
                         Ok(metadata) => {
                             // Create a relative path for the result that preserves the original structure
-                            let relative_path = normalize_path_for_storage(&final_output_path.strip_prefix(&base_dir).unwrap_or(&final_output_path));
-                            
+                            let relative_path = normalize_path_for_storage(
+                                &final_output_path
+                                    .strip_prefix(&base_dir)
+                                    .unwrap_or(&final_output_path),
+                            );
+
                             // Add result to the shared map
                             let mut map = results.lock().await;
                             map.insert(relative_path, metadata);
                             info!("Successfully collected: {}", artifact.name);
-                        },
+                        }
                         Err(e) => {
                             // If the artifact is required, report the error but continue
                             let error_msg = e.to_string();
-                            
+
                             // Track permission failures
                             if PermissionTracker::is_permission_error(&error_msg) {
-                                permission_tracker.record_permission_failure(&artifact.name).await;
+                                permission_tracker
+                                    .record_permission_failure(&artifact.name)
+                                    .await;
                             }
-                            
+
                             if artifact.required {
                                 if error_msg.contains("Permission denied") {
-                                    warn!("⚠️  Failed to collect required artifact '{}': {}", artifact.name, error_msg);
+                                    warn!(
+                                        "⚠️  Failed to collect required artifact '{}': {}",
+                                        artifact.name, error_msg
+                                    );
                                 } else {
-                                    warn!("Failed to collect required artifact '{}': {}", artifact.name, error_msg);
+                                    warn!(
+                                        "Failed to collect required artifact '{}': {}",
+                                        artifact.name, error_msg
+                                    );
                                 }
                             } else {
-                                debug!("Failed to collect optional artifact '{}': {}", artifact.name, error_msg);
+                                debug!(
+                                    "Failed to collect optional artifact '{}': {}",
+                                    artifact.name, error_msg
+                                );
                             }
                         }
                     }
                 }
             } else {
                 // Standard collection for non-regex artifacts
-                match collector.collect(&artifact, &final_output_path.parent().unwrap_or(&fs_dir)).await {
+                match collector
+                    .collect(&artifact, &final_output_path.parent().unwrap_or(&fs_dir))
+                    .await
+                {
                     Ok(metadata) => {
                         // Create a relative path for the result that preserves the original structure
-                        let relative_path = normalize_path_for_storage(&final_output_path.strip_prefix(&base_dir).unwrap_or(&final_output_path));
-                        
+                        let relative_path = normalize_path_for_storage(
+                            &final_output_path
+                                .strip_prefix(&base_dir)
+                                .unwrap_or(&final_output_path),
+                        );
+
                         // Add result to the shared map
                         let mut map = results.lock().await;
                         map.insert(relative_path, metadata);
                         info!("Successfully collected: {}", artifact.name);
-                    },
+                    }
                     Err(e) => {
                         // If the artifact is required, report the error but continue
                         let error_msg = e.to_string();
-                        
+
                         // Track permission failures
                         if PermissionTracker::is_permission_error(&error_msg) {
-                            permission_tracker.record_permission_failure(&artifact.name).await;
+                            permission_tracker
+                                .record_permission_failure(&artifact.name)
+                                .await;
                         }
-                        
+
                         if artifact.required {
                             if error_msg.contains("Permission denied") {
-                                warn!("⚠️  Failed to collect required artifact '{}': {}", artifact.name, error_msg);
+                                warn!(
+                                    "⚠️  Failed to collect required artifact '{}': {}",
+                                    artifact.name, error_msg
+                                );
                             } else {
-                                warn!("Failed to collect required artifact '{}': {}", artifact.name, error_msg);
+                                warn!(
+                                    "Failed to collect required artifact '{}': {}",
+                                    artifact.name, error_msg
+                                );
                             }
                         } else {
-                            debug!("Failed to collect optional artifact '{}': {}", artifact.name, error_msg);
+                            debug!(
+                                "Failed to collect optional artifact '{}': {}",
+                                artifact.name, error_msg
+                            );
                         }
                     }
                 }
             }
-            
+
             // Return the expected tuple
             (artifact, Ok(()))
-        }.boxed()
+        }
+        .boxed()
     });
-    
+
     // Execute all futures concurrently with controlled parallelism
     future::join_all(futures).await;
-    
+
     // Report permission failures if any occurred
     permission_tracker.report_failures().await;
-    
+
     // Extract results from the mutex
     let final_results = results.lock().await.clone();
     Ok(final_results)
 }
 
 /// Legacy synchronous collection function that calls the async implementation.
-/// 
+///
 /// This function provides a synchronous interface to the asynchronous artifact
 /// collection system. It creates a Tokio runtime and blocks until all artifacts
 /// are collected.
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `artifacts` - Slice of artifact configurations to collect
 /// * `base_dir` - Base directory where collected artifacts will be stored
-/// 
+///
 /// # Returns
-/// 
+///
 /// * `Ok(HashMap<String, ArtifactMetadata>)` - Map of relative paths to metadata for collected artifacts
 /// * `Err` - If runtime creation fails or collection encounters fatal errors
-/// 
+///
 /// # Example
-/// 
+///
 /// ```no_run
 /// # use std::path::Path;
 /// # use rust_collector::config::Artifact;
@@ -354,13 +415,13 @@ pub async fn collect_artifacts_parallel(
 /// }
 /// # Ok::<(), anyhow::Error>(())
 /// ```
-/// 
+///
 /// # Performance
-/// 
+///
 /// This function uses all available CPU cores for parallel collection.
 pub fn collect_artifacts(
     artifacts: &[Artifact],
-    base_dir: &Path
+    base_dir: &Path,
 ) -> Result<HashMap<String, ArtifactMetadata>> {
     // Create a new runtime for running the async function
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -368,7 +429,7 @@ pub fn collect_artifacts(
         .enable_all()
         .build()
         .context("Failed to create Tokio runtime")?;
-    
+
     // Run the async function in the runtime
     runtime.block_on(collect_artifacts_parallel(artifacts, base_dir))
 }
@@ -376,9 +437,9 @@ pub fn collect_artifacts(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
-    use std::fs;
     use crate::config::{LinuxArtifactType, MacOSArtifactType};
+    use std::fs;
+    use tempfile::TempDir;
 
     // Mock collector for testing
     struct MockCollector {
@@ -388,7 +449,11 @@ mod tests {
 
     #[async_trait::async_trait]
     impl ArtifactCollector for MockCollector {
-        async fn collect(&self, artifact: &Artifact, output_dir: &Path) -> Result<ArtifactMetadata> {
+        async fn collect(
+            &self,
+            artifact: &Artifact,
+            output_dir: &Path,
+        ) -> Result<ArtifactMetadata> {
             if self.should_fail {
                 return Err(anyhow::anyhow!("Mock failure"));
             }
@@ -419,12 +484,20 @@ mod tests {
     #[test]
     fn test_is_special_artifact() {
         // Windows special artifacts
-        assert!(is_special_artifact(&ArtifactType::Windows(WindowsArtifactType::MFT)));
-        assert!(is_special_artifact(&ArtifactType::Windows(WindowsArtifactType::USNJournal)));
+        assert!(is_special_artifact(&ArtifactType::Windows(
+            WindowsArtifactType::MFT
+        )));
+        assert!(is_special_artifact(&ArtifactType::Windows(
+            WindowsArtifactType::USNJournal
+        )));
 
         // Non-special artifacts
-        assert!(!is_special_artifact(&ArtifactType::Windows(WindowsArtifactType::Registry)));
-        assert!(!is_special_artifact(&ArtifactType::Linux(LinuxArtifactType::SysLogs)));
+        assert!(!is_special_artifact(&ArtifactType::Windows(
+            WindowsArtifactType::Registry
+        )));
+        assert!(!is_special_artifact(&ArtifactType::Linux(
+            LinuxArtifactType::SysLogs
+        )));
         assert!(!is_special_artifact(&ArtifactType::FileSystem));
         assert!(!is_special_artifact(&ArtifactType::Logs));
     }
@@ -480,13 +553,19 @@ mod tests {
         };
 
         let dest_path = get_destination_path(fs_dir, &artifact);
-        
+
         if cfg!(windows) {
             // On Windows, strip the drive letter
-            assert_eq!(dest_path, fs_dir.join(r"Windows\System32\drivers\etc\hosts"));
+            assert_eq!(
+                dest_path,
+                fs_dir.join(r"Windows\System32\drivers\etc\hosts")
+            );
         } else {
             // On Unix, the whole path is preserved
-            assert_eq!(dest_path, fs_dir.join(r"C:\Windows\System32\drivers\etc\hosts"));
+            assert_eq!(
+                dest_path,
+                fs_dir.join(r"C:\Windows\System32\drivers\etc\hosts")
+            );
         }
     }
 
@@ -569,15 +648,17 @@ mod tests {
     #[tokio::test]
     async fn test_collect_artifacts_parallel_empty() {
         let temp_dir = TempDir::new().unwrap();
-        let results = collect_artifacts_parallel(&[], temp_dir.path()).await.unwrap();
-        
+        let results = collect_artifacts_parallel(&[], temp_dir.path())
+            .await
+            .unwrap();
+
         assert!(results.is_empty());
     }
 
     #[tokio::test]
     async fn test_collect_artifacts_parallel_with_mock() {
         let temp_dir = TempDir::new().unwrap();
-        
+
         // Create test artifact
         let artifact = Artifact {
             name: "test".to_string(),
@@ -600,7 +681,7 @@ mod tests {
         // to accept custom collectors, so we'll test the collector directly
         let fs_dir = temp_dir.path().join("fs");
         fs::create_dir_all(&fs_dir).unwrap();
-        
+
         let metadata = collector.collect(&artifact, &fs_dir).await.unwrap();
         assert_eq!(metadata.file_size, 12);
         assert_eq!(metadata.original_path, "/test/file.txt");
@@ -609,7 +690,7 @@ mod tests {
     #[tokio::test]
     async fn test_mock_collector_failure() {
         let temp_dir = TempDir::new().unwrap();
-        
+
         let artifact = Artifact {
             name: "test".to_string(),
             artifact_type: ArtifactType::FileSystem,
@@ -634,7 +715,7 @@ mod tests {
     #[test]
     fn test_legacy_collect_artifacts() {
         let temp_dir = TempDir::new().unwrap();
-        
+
         // Test with empty artifacts
         let results = collect_artifacts(&[], temp_dir.path()).unwrap();
         assert!(results.is_empty());
@@ -667,7 +748,7 @@ mod tests {
     #[test]
     fn test_get_destination_path_edge_cases() {
         let fs_dir = Path::new("/output/fs");
-        
+
         // Test empty path
         let artifact = Artifact {
             name: "empty".to_string(),
@@ -681,7 +762,7 @@ mod tests {
         };
         let dest_path = get_destination_path(fs_dir, &artifact);
         assert_eq!(dest_path, fs_dir.join(""));
-        
+
         // Test path with only separators
         let artifact2 = Artifact {
             name: "sep".to_string(),
@@ -710,7 +791,7 @@ mod tests {
             metadata: HashMap::new(),
             regex: None,
         };
-        
+
         let dest_path = get_destination_path(fs_dir, &artifact);
         // UNC paths should have the leading backslashes stripped
         assert_eq!(dest_path, fs_dir.join(r"server\share\file.txt"));
@@ -719,18 +800,18 @@ mod tests {
     #[test]
     fn test_handle_duplicate_filename_complex_extensions() {
         let temp_dir = TempDir::new().unwrap();
-        
+
         // Test file with multiple dots
         let base_path = temp_dir.path().join("file.tar.gz");
         fs::write(&base_path, "content").unwrap();
-        
+
         let path2 = handle_duplicate_filename(&base_path);
         assert_eq!(path2, temp_dir.path().join("file.tar_1.gz"));
-        
+
         // Test file with no stem
         let hidden_path = temp_dir.path().join(".hidden");
         fs::write(&hidden_path, "content").unwrap();
-        
+
         let path3 = handle_duplicate_filename(&hidden_path);
         assert_eq!(path3, temp_dir.path().join(".hidden_1"));
     }
@@ -739,13 +820,13 @@ mod tests {
     fn test_normalize_path_for_storage_edge_cases() {
         // Empty path
         assert_eq!(normalize_path_for_storage(Path::new("")), "");
-        
+
         // Path with multiple backslashes
         assert_eq!(
             normalize_path_for_storage(Path::new(r"C:\\Windows\\System32")),
             "C://Windows//System32"
         );
-        
+
         // Path with mixed separators already
         assert_eq!(
             normalize_path_for_storage(Path::new("some/mixed\\path/here")),
@@ -756,16 +837,16 @@ mod tests {
     #[tokio::test]
     async fn test_collect_artifacts_parallel_with_regex() {
         use crate::config::RegexConfig;
-        
+
         let temp_dir = TempDir::new().unwrap();
-        
+
         // Create test files
         let test_dir = temp_dir.path().join("logs");
         fs::create_dir_all(&test_dir).unwrap();
         fs::write(test_dir.join("app.log"), "log content").unwrap();
         fs::write(test_dir.join("error.log"), "error content").unwrap();
         fs::write(test_dir.join("debug.txt"), "debug content").unwrap();
-        
+
         let artifact = Artifact {
             name: "logs".to_string(),
             artifact_type: ArtifactType::Logs,
@@ -782,7 +863,7 @@ mod tests {
                 max_depth: None,
             }),
         };
-        
+
         // We can't easily test the full regex collection without mocking
         // but we can verify the artifact structure
         assert!(artifact.regex.is_some());
@@ -792,7 +873,7 @@ mod tests {
     #[tokio::test]
     async fn test_collect_artifacts_with_failures() {
         let temp_dir = TempDir::new().unwrap();
-        
+
         // Create artifacts with mixed success/failure scenarios
         let artifacts = vec![
             Artifact {
@@ -816,11 +897,11 @@ mod tests {
                 regex: None,
             },
         ];
-        
+
         // Should complete without error (failures are logged, not returned)
         let result = collect_artifacts_parallel(&artifacts, temp_dir.path()).await;
         assert!(result.is_ok());
-        
+
         // Results should be empty since both files don't exist
         let results = result.unwrap();
         assert!(results.is_empty());
@@ -829,14 +910,14 @@ mod tests {
     #[test]
     fn test_is_special_artifact_comprehensive() {
         // Test all Windows artifact types
-        use crate::config::WindowsArtifactType::*;
         use crate::config::VolatileDataType;
-        
+        use crate::config::WindowsArtifactType::*;
+
         let special_types = vec![
             ArtifactType::Windows(MFT),
             ArtifactType::Windows(USNJournal),
         ];
-        
+
         let normal_types = vec![
             ArtifactType::Windows(Registry),
             ArtifactType::Windows(EventLog),
@@ -852,15 +933,21 @@ mod tests {
             ArtifactType::VolatileData(VolatileDataType::Processes),
             ArtifactType::Custom,
         ];
-        
+
         for artifact_type in special_types {
-            assert!(is_special_artifact(&artifact_type), 
-                   "{:?} should be special", artifact_type);
+            assert!(
+                is_special_artifact(&artifact_type),
+                "{:?} should be special",
+                artifact_type
+            );
         }
-        
+
         for artifact_type in normal_types {
-            assert!(!is_special_artifact(&artifact_type), 
-                   "{:?} should not be special", artifact_type);
+            assert!(
+                !is_special_artifact(&artifact_type),
+                "{:?} should not be special",
+                artifact_type
+            );
         }
     }
 
@@ -869,10 +956,10 @@ mod tests {
         // Verify the concurrency limit calculation
         let cpu_count = num_cpus::get();
         let max_concurrent = std::cmp::min(cpu_count * 2, 32);
-        
+
         assert!(max_concurrent > 0);
         assert!(max_concurrent <= 32);
-        
+
         // Test edge cases
         if cpu_count == 1 {
             assert_eq!(max_concurrent, 2);

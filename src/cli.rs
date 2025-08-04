@@ -1,8 +1,8 @@
-use clap::{Parser, Subcommand, Args as ClapArgs, ValueEnum};
+use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 /// Command-line arguments for the rust-dfir-triage tool.
-/// 
+///
 /// This struct defines all available command-line options for the forensic
 /// collection tool. Options are organized into logical groups for cloud uploads,
 /// local storage, collection configuration, and subcommands.
@@ -60,82 +60,112 @@ pub struct Args {
     /// Skip uploading to cloud storage (S3 or SFTP)
     #[clap(long)]
     pub skip_upload: bool,
-    
+
     /// Verbose logging
     #[clap(short, long)]
     pub verbose: bool,
-    
+
     /// Path to configuration YAML file
     #[clap(short = 'c', long)]
     pub config: Option<PathBuf>,
-    
+
     /// Override default artifact types to collect (comma-separated)
     #[clap(short = 't', long)]
     pub artifact_types: Option<String>,
-    
+
     /// Target operating system (windows, linux, macos)
     #[clap(long)]
     pub target_os: Option<TargetOS>,
-    
+
     /// Continue even without elevated privileges
     #[clap(long)]
     pub force: bool,
-    
+
     /// Stream artifacts directly to cloud storage (S3 or SFTP) without local storage
-    #[clap(long, help = "Stream artifacts directly to cloud storage without storing locally")]
+    #[clap(
+        long,
+        help = "Stream artifacts directly to cloud storage without storing locally"
+    )]
     pub stream: bool,
 
     /// Buffer size for streaming operations (in MB)
-    #[clap(long, default_value = "8", help = "Buffer size for streaming operations (in MB)")]
+    #[clap(
+        long,
+        default_value = "8",
+        help = "Buffer size for streaming operations (in MB)"
+    )]
     pub buffer_size: usize,
-    
+
     /// Skip volatile data collection (running processes, network connections, etc.)
     #[clap(long, help = "Skip volatile data collection")]
     pub no_volatile_data: bool,
-    
+
     /// Dump process memory for forensic analysis
     #[clap(long, help = "Dump process memory for forensic analysis")]
     pub dump_process_memory: bool,
-    
+
     /// Specific processes to dump memory from (comma-separated names)
-    #[clap(long, help = "Specific processes to dump memory from (comma-separated names)")]
+    #[clap(
+        long,
+        help = "Specific processes to dump memory from (comma-separated names)"
+    )]
     pub process: Option<String>,
-    
+
     /// Specific process IDs to dump memory from (comma-separated PIDs)
-    #[clap(long, help = "Specific process IDs to dump memory from (comma-separated PIDs)")]
+    #[clap(
+        long,
+        help = "Specific process IDs to dump memory from (comma-separated PIDs)"
+    )]
     pub pid: Option<String>,
-    
+
     /// Maximum total size for memory dumps (in MB)
-    #[clap(long, default_value = "4096", help = "Maximum total size for memory dumps (in MB)")]
+    #[clap(
+        long,
+        default_value = "4096",
+        help = "Maximum total size for memory dumps (in MB)"
+    )]
     pub max_memory_size: usize,
-    
+
     /// Include system processes in memory dump
     #[clap(long, help = "Include system processes in memory dump")]
     pub include_system_processes: bool,
-    
+
     /// Memory regions to dump (comma-separated: heap,stack,code,all)
-    #[clap(long, default_value = "all", help = "Memory regions to dump (comma-separated: heap,stack,code,all)")]
+    #[clap(
+        long,
+        default_value = "all",
+        help = "Memory regions to dump (comma-separated: heap,stack,code,all)"
+    )]
     pub memory_regions: String,
-    
+
     /// Search for a pattern in process memory (hex format, e.g. "4D5A90")
-    #[clap(long, help = "Search for a pattern in process memory (hex format, e.g. \"4D5A90\")")]
+    #[clap(
+        long,
+        help = "Search for a pattern in process memory (hex format, e.g. \"4D5A90\")"
+    )]
     pub memory_search: Option<String>,
-    
+
     /// Scan process memory with YARA rules (path to rule file or rule string)
-    #[clap(long, help = "Scan process memory with YARA rules (path to rule file or rule string)")]
+    #[clap(
+        long,
+        help = "Scan process memory with YARA rules (path to rule file or rule string)"
+    )]
     pub memory_yara: Option<String>,
-    
+
     /// Dump specific memory region (format: pid:address:size, e.g. "1234:0x400000:4096")
-    #[clap(long, help = "Dump specific memory region (format: pid:address:size, e.g. \"1234:0x400000:4096\")")]
+    #[clap(
+        long,
+        help = "Dump specific memory region (format: pid:address:size, e.g. \"1234:0x400000:4096\")"
+    )]
     pub dump_memory_region: Option<String>,
-    
+
     /// Subcommands
     #[clap(subcommand)]
     pub command: Option<Commands>,
 }
 
 /// Target operating system for cross-compilation.
-/// 
+///
 /// Used with the `build` subcommand to specify the target platform
 /// when building a custom collector binary.
 #[derive(Clone, Debug, ValueEnum, PartialEq)]
@@ -166,19 +196,19 @@ pub enum Commands {
         /// Path to output configuration file
         #[clap(default_value = "config.yaml")]
         path: PathBuf,
-        
+
         /// Target OS for the configuration (windows, linux, macos)
         #[clap(long)]
         target_os: Option<TargetOS>,
     },
-    
+
     /// Build a standalone binary with embedded configuration
     #[clap(name = "build")]
     Build(BuildOpts),
 }
 
 /// Options for the build subcommand.
-/// 
+///
 /// Controls the creation of custom collector binaries with embedded
 /// configurations for deployment scenarios.
 #[derive(ClapArgs, Debug)]
@@ -186,15 +216,15 @@ pub struct BuildOpts {
     /// Path to configuration YAML file to embed
     #[clap(short, long)]
     pub config: PathBuf,
-    
+
     /// Output path for the build script
     #[clap(short, long)]
     pub output: Option<PathBuf>,
-    
+
     /// Custom name for the generated binary
     #[clap(short, long)]
     pub name: Option<String>,
-    
+
     /// Target OS for the build (windows, linux, macos)
     #[clap(long)]
     pub target_os: Option<TargetOS>,
@@ -209,8 +239,10 @@ mod tests {
     fn test_basic_args_parsing() {
         let args = Args::parse_from(&[
             "rust-dfir-triage",
-            "--bucket", "test-bucket",
-            "--output", "/tmp/output",
+            "--bucket",
+            "test-bucket",
+            "--output",
+            "/tmp/output",
             "--verbose",
         ]);
 
@@ -225,10 +257,14 @@ mod tests {
     fn test_s3_args() {
         let args = Args::parse_from(&[
             "rust-dfir-triage",
-            "--bucket", "my-bucket",
-            "--prefix", "custom-prefix",
-            "--region", "us-west-2",
-            "--profile", "dev",
+            "--bucket",
+            "my-bucket",
+            "--prefix",
+            "custom-prefix",
+            "--region",
+            "us-west-2",
+            "--profile",
+            "dev",
             "--encrypt",
         ]);
 
@@ -243,12 +279,18 @@ mod tests {
     fn test_sftp_args() {
         let args = Args::parse_from(&[
             "rust-dfir-triage",
-            "--sftp-host", "sftp.example.com",
-            "--sftp-port", "2222",
-            "--sftp-user", "testuser",
-            "--sftp-key", "/home/user/.ssh/id_rsa",
-            "--sftp-path", "/remote/path",
-            "--sftp-connections", "8",
+            "--sftp-host",
+            "sftp.example.com",
+            "--sftp-port",
+            "2222",
+            "--sftp-user",
+            "testuser",
+            "--sftp-key",
+            "/home/user/.ssh/id_rsa",
+            "--sftp-path",
+            "/remote/path",
+            "--sftp-connections",
+            "8",
         ]);
 
         assert_eq!(args.sftp_host, Some("sftp.example.com".to_string()));
@@ -281,11 +323,15 @@ mod tests {
         let args = Args::parse_from(&[
             "rust-dfir-triage",
             "--dump-process-memory",
-            "--process", "chrome,firefox",
-            "--pid", "1234,5678",
-            "--max-memory-size", "8192",
+            "--process",
+            "chrome,firefox",
+            "--pid",
+            "1234,5678",
+            "--max-memory-size",
+            "8192",
             "--include-system-processes",
-            "--memory-regions", "heap,stack",
+            "--memory-regions",
+            "heap,stack",
         ]);
 
         assert!(args.dump_process_memory);
@@ -302,7 +348,8 @@ mod tests {
             "rust-dfir-triage",
             "init-config",
             "custom-config.yaml",
-            "--target-os", "windows",
+            "--target-os",
+            "windows",
         ]);
 
         match args.command {
@@ -319,10 +366,14 @@ mod tests {
         let args = Args::parse_from(&[
             "rust-dfir-triage",
             "build",
-            "--config", "config.yaml",
-            "--output", "build.sh",
-            "--name", "custom-collector",
-            "--target-os", "linux",
+            "--config",
+            "config.yaml",
+            "--output",
+            "build.sh",
+            "--name",
+            "custom-collector",
+            "--target-os",
+            "linux",
         ]);
 
         match args.command {
@@ -348,8 +399,10 @@ mod tests {
         // Test that parser accepts both S3 and SFTP args (validation happens at runtime)
         let args = Args::parse_from(&[
             "rust-dfir-triage",
-            "--bucket", "test-bucket",
-            "--sftp-host", "sftp.example.com",
+            "--bucket",
+            "test-bucket",
+            "--sftp-host",
+            "sftp.example.com",
         ]);
 
         assert_eq!(args.bucket, Some("test-bucket".to_string()));
@@ -361,8 +414,10 @@ mod tests {
         let args = Args::parse_from(&[
             "rust-dfir-triage",
             "--stream",
-            "--buffer-size", "16",
-            "--bucket", "stream-bucket",
+            "--buffer-size",
+            "16",
+            "--bucket",
+            "stream-bucket",
         ]);
 
         assert!(args.stream);
@@ -374,27 +429,39 @@ mod tests {
     fn test_memory_search_and_yara() {
         let args = Args::parse_from(&[
             "rust-dfir-triage",
-            "--memory-search", "4D5A9000",
-            "--memory-yara", "/path/to/rules.yar",
-            "--dump-memory-region", "1234:0x400000:4096",
+            "--memory-search",
+            "4D5A9000",
+            "--memory-yara",
+            "/path/to/rules.yar",
+            "--dump-memory-region",
+            "1234:0x400000:4096",
         ]);
 
         assert_eq!(args.memory_search, Some("4D5A9000".to_string()));
         assert_eq!(args.memory_yara, Some("/path/to/rules.yar".to_string()));
-        assert_eq!(args.dump_memory_region, Some("1234:0x400000:4096".to_string()));
+        assert_eq!(
+            args.dump_memory_region,
+            Some("1234:0x400000:4096".to_string())
+        );
     }
 
     #[test]
     fn test_artifact_types_and_config() {
         let args = Args::parse_from(&[
             "rust-dfir-triage",
-            "--config", "/path/to/config.yaml",
-            "--artifact-types", "logs,registry,memory",
-            "--target-os", "windows",
+            "--config",
+            "/path/to/config.yaml",
+            "--artifact-types",
+            "logs,registry,memory",
+            "--target-os",
+            "windows",
         ]);
 
         assert_eq!(args.config, Some(PathBuf::from("/path/to/config.yaml")));
-        assert_eq!(args.artifact_types, Some("logs,registry,memory".to_string()));
+        assert_eq!(
+            args.artifact_types,
+            Some("logs,registry,memory".to_string())
+        );
         assert_eq!(args.target_os, Some(TargetOS::Windows));
     }
 
@@ -406,7 +473,8 @@ mod tests {
             "--force",
             "--skip-upload",
             "--no-volatile-data",
-            "--output", "/custom/output",
+            "--output",
+            "/custom/output",
         ]);
 
         assert!(args.verbose);

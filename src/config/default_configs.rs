@@ -1,6 +1,8 @@
+use crate::config::artifact_types::{
+    ArtifactType, LinuxArtifactType, MacOSArtifactType, WindowsArtifactType,
+};
+use crate::config::collection_config::{Artifact, CollectionConfig};
 use std::collections::HashMap;
-use crate::config::artifact_types::{ArtifactType, WindowsArtifactType, LinuxArtifactType, MacOSArtifactType};
-use crate::config::collection_config::{CollectionConfig, Artifact};
 
 impl CollectionConfig {
     /// Default configuration for Windows
@@ -321,7 +323,9 @@ impl CollectionConfig {
                 Artifact {
                     name: "quarantine".into(),
                     artifact_type: ArtifactType::MacOS(MacOSArtifactType::Quarantine),
-                    source_path: "$HOME/Library/Preferences/com.apple.LaunchServices.QuarantineEventsV2".into(),
+                    source_path:
+                        "$HOME/Library/Preferences/com.apple.LaunchServices.QuarantineEventsV2"
+                            .into(),
                     destination_name: "QuarantineEventsV2".into(),
                     description: Some("Quarantine database".into()),
                     required: false,
@@ -439,17 +443,18 @@ mod tests {
     #[test]
     fn test_default_windows_config() {
         let config = CollectionConfig::default_windows();
-        
+
         // Test basic properties
         assert_eq!(config.version, "1.0");
-        assert_eq!(config.description, "Default Windows DFIR triage configuration");
+        assert_eq!(
+            config.description,
+            "Default Windows DFIR triage configuration"
+        );
         assert!(!config.artifacts.is_empty());
-        
+
         // Test specific artifacts exist
-        let artifact_names: Vec<&str> = config.artifacts.iter()
-            .map(|a| a.name.as_str())
-            .collect();
-        
+        let artifact_names: Vec<&str> = config.artifacts.iter().map(|a| a.name.as_str()).collect();
+
         assert!(artifact_names.contains(&"MFT"));
         assert!(artifact_names.contains(&"SYSTEM"));
         assert!(artifact_names.contains(&"SOFTWARE"));
@@ -461,42 +466,56 @@ mod tests {
         assert!(artifact_names.contains(&"Application.evtx"));
         assert!(artifact_names.contains(&"Prefetch"));
         assert!(artifact_names.contains(&"USN Journal"));
-        
+
         // Test MFT artifact specifically
-        let mft = config.artifacts.iter()
+        let mft = config
+            .artifacts
+            .iter()
             .find(|a| a.name == "MFT")
             .expect("MFT artifact should exist");
-        
-        assert!(matches!(mft.artifact_type, ArtifactType::Windows(WindowsArtifactType::MFT)));
+
+        assert!(matches!(
+            mft.artifact_type,
+            ArtifactType::Windows(WindowsArtifactType::MFT)
+        ));
         assert_eq!(mft.source_path, r"\\?\C:\$MFT");
         assert_eq!(mft.destination_name, "MFT");
         assert!(mft.required);
         assert_eq!(mft.description, Some("Master File Table".to_string()));
-        
+
         // Test registry artifact
-        let system_hive = config.artifacts.iter()
+        let system_hive = config
+            .artifacts
+            .iter()
             .find(|a| a.name == "SYSTEM")
             .expect("SYSTEM artifact should exist");
-        
-        assert!(matches!(system_hive.artifact_type, ArtifactType::Windows(WindowsArtifactType::Registry)));
-        assert_eq!(system_hive.source_path, r"\\?\C:\Windows\System32\config\SYSTEM");
+
+        assert!(matches!(
+            system_hive.artifact_type,
+            ArtifactType::Windows(WindowsArtifactType::Registry)
+        ));
+        assert_eq!(
+            system_hive.source_path,
+            r"\\?\C:\Windows\System32\config\SYSTEM"
+        );
         assert!(system_hive.required);
     }
 
     #[test]
     fn test_default_linux_config() {
         let config = CollectionConfig::default_linux();
-        
+
         // Test basic properties
         assert_eq!(config.version, "1.0");
-        assert_eq!(config.description, "Default Linux DFIR triage configuration");
+        assert_eq!(
+            config.description,
+            "Default Linux DFIR triage configuration"
+        );
         assert!(!config.artifacts.is_empty());
-        
+
         // Test specific artifacts exist
-        let artifact_names: Vec<&str> = config.artifacts.iter()
-            .map(|a| a.name.as_str())
-            .collect();
-        
+        let artifact_names: Vec<&str> = config.artifacts.iter().map(|a| a.name.as_str()).collect();
+
         assert!(artifact_names.contains(&"syslog"));
         assert!(artifact_names.contains(&"auth.log"));
         assert!(artifact_names.contains(&"journal"));
@@ -507,23 +526,33 @@ mod tests {
         assert!(artifact_names.contains(&"bash_history"));
         assert!(artifact_names.contains(&"dpkg.log"));
         assert!(artifact_names.contains(&"systemd-units"));
-        
+
         // Test syslog artifact specifically
-        let syslog = config.artifacts.iter()
+        let syslog = config
+            .artifacts
+            .iter()
             .find(|a| a.name == "syslog")
             .expect("syslog artifact should exist");
-        
-        assert!(matches!(syslog.artifact_type, ArtifactType::Linux(LinuxArtifactType::SysLogs)));
+
+        assert!(matches!(
+            syslog.artifact_type,
+            ArtifactType::Linux(LinuxArtifactType::SysLogs)
+        ));
         assert_eq!(syslog.source_path, "/var/log/syslog");
         assert_eq!(syslog.destination_name, "syslog");
         assert!(syslog.required);
-        
+
         // Test bash history artifact
-        let bash_history = config.artifacts.iter()
+        let bash_history = config
+            .artifacts
+            .iter()
             .find(|a| a.name == "bash_history")
             .expect("bash_history artifact should exist");
-        
-        assert!(matches!(bash_history.artifact_type, ArtifactType::Linux(LinuxArtifactType::Bash)));
+
+        assert!(matches!(
+            bash_history.artifact_type,
+            ArtifactType::Linux(LinuxArtifactType::Bash)
+        ));
         assert_eq!(bash_history.source_path, "$HOME/.bash_history");
         assert!(!bash_history.required);
     }
@@ -531,17 +560,18 @@ mod tests {
     #[test]
     fn test_default_macos_config() {
         let config = CollectionConfig::default_macos();
-        
+
         // Test basic properties
         assert_eq!(config.version, "1.0");
-        assert_eq!(config.description, "Default macOS DFIR triage configuration");
+        assert_eq!(
+            config.description,
+            "Default macOS DFIR triage configuration"
+        );
         assert!(!config.artifacts.is_empty());
-        
+
         // Test specific artifacts exist
-        let artifact_names: Vec<&str> = config.artifacts.iter()
-            .map(|a| a.name.as_str())
-            .collect();
-        
+        let artifact_names: Vec<&str> = config.artifacts.iter().map(|a| a.name.as_str()).collect();
+
         assert!(artifact_names.contains(&"system.log"));
         assert!(artifact_names.contains(&"unified_logs"));
         assert!(artifact_names.contains(&"fseventsd"));
@@ -552,50 +582,64 @@ mod tests {
         assert!(artifact_names.contains(&"launch_daemons"));
         assert!(artifact_names.contains(&"spotlight_store"));
         assert!(artifact_names.contains(&"system_plists"));
-        
+
         // Test unified logs artifact specifically
-        let unified_logs = config.artifacts.iter()
+        let unified_logs = config
+            .artifacts
+            .iter()
             .find(|a| a.name == "unified_logs")
             .expect("unified_logs artifact should exist");
-        
-        assert!(matches!(unified_logs.artifact_type, ArtifactType::MacOS(MacOSArtifactType::UnifiedLogs)));
+
+        assert!(matches!(
+            unified_logs.artifact_type,
+            ArtifactType::MacOS(MacOSArtifactType::UnifiedLogs)
+        ));
         assert_eq!(unified_logs.source_path, "/private/var/db/diagnostics");
         assert_eq!(unified_logs.destination_name, "unified_logs");
         assert!(!unified_logs.required);
-        
+
         // Test quarantine database
-        let quarantine = config.artifacts.iter()
+        let quarantine = config
+            .artifacts
+            .iter()
             .find(|a| a.name == "quarantine")
             .expect("quarantine artifact should exist");
-        
-        assert!(matches!(quarantine.artifact_type, ArtifactType::MacOS(MacOSArtifactType::Quarantine)));
+
+        assert!(matches!(
+            quarantine.artifact_type,
+            ArtifactType::MacOS(MacOSArtifactType::Quarantine)
+        ));
         assert!(quarantine.source_path.contains("QuarantineEventsV2"));
     }
 
     #[test]
     fn test_default_minimal_config() {
         let config = CollectionConfig::default_minimal();
-        
+
         // Test basic properties
         assert_eq!(config.version, "1.0");
         assert_eq!(config.description, "Minimal DFIR triage configuration");
         assert_eq!(config.artifacts.len(), 2);
-        
+
         // Test hostname artifact
-        let hostname = config.artifacts.iter()
+        let hostname = config
+            .artifacts
+            .iter()
             .find(|a| a.name == "hostname")
             .expect("hostname artifact should exist");
-        
+
         assert!(matches!(hostname.artifact_type, ArtifactType::SystemInfo));
         assert_eq!(hostname.source_path, "/etc/hostname");
         assert_eq!(hostname.destination_name, "hostname");
         assert!(!hostname.required);
-        
+
         // Test logs artifact
-        let logs = config.artifacts.iter()
+        let logs = config
+            .artifacts
+            .iter()
             .find(|a| a.name == "logs")
             .expect("logs artifact should exist");
-        
+
         assert!(matches!(logs.artifact_type, ArtifactType::Logs));
         assert_eq!(logs.source_path, "/var/log");
         assert_eq!(logs.destination_name, "logs");
@@ -610,7 +654,7 @@ mod tests {
             CollectionConfig::default_macos(),
             CollectionConfig::default_minimal(),
         ];
-        
+
         for config in configs {
             assert!(!config.version.is_empty());
             assert!(config.version.contains('.'));
@@ -625,7 +669,7 @@ mod tests {
             CollectionConfig::default_macos(),
             CollectionConfig::default_minimal(),
         ];
-        
+
         for config in configs {
             assert!(!config.description.is_empty());
             assert!(config.description.contains("DFIR"));
@@ -640,7 +684,7 @@ mod tests {
             CollectionConfig::default_macos(),
             CollectionConfig::default_minimal(),
         ];
-        
+
         // All default artifacts should have empty metadata and no regex
         for config in configs {
             for artifact in &config.artifacts {
@@ -658,7 +702,7 @@ mod tests {
             CollectionConfig::default_macos(),
             CollectionConfig::default_minimal(),
         ];
-        
+
         // All default configs should have empty global options
         for config in configs {
             assert!(config.global_options.is_empty());
@@ -668,10 +712,10 @@ mod tests {
     #[test]
     fn test_windows_artifact_types() {
         let config = CollectionConfig::default_windows();
-        
+
         // Count different artifact types
         let mut type_counts = HashMap::new();
-        
+
         for artifact in &config.artifacts {
             match &artifact.artifact_type {
                 ArtifactType::Windows(win_type) => {
@@ -681,7 +725,7 @@ mod tests {
                 _ => panic!("Non-Windows artifact type in Windows config"),
             }
         }
-        
+
         // Verify we have multiple of certain types
         assert!(type_counts.get("Registry").unwrap_or(&0) >= &5);
         assert!(type_counts.get("EventLog").unwrap_or(&0) >= &3);
@@ -693,20 +737,16 @@ mod tests {
     #[test]
     fn test_linux_artifact_types() {
         let config = CollectionConfig::default_linux();
-        
+
         // Verify all artifacts are Linux type
         for artifact in &config.artifacts {
             assert!(matches!(artifact.artifact_type, ArtifactType::Linux(_)));
         }
-        
+
         // Count required vs optional
-        let required_count = config.artifacts.iter()
-            .filter(|a| a.required)
-            .count();
-        let optional_count = config.artifacts.iter()
-            .filter(|a| !a.required)
-            .count();
-        
+        let required_count = config.artifacts.iter().filter(|a| a.required).count();
+        let optional_count = config.artifacts.iter().filter(|a| !a.required).count();
+
         assert_eq!(required_count, 2); // syslog and auth.log
         assert!(optional_count > 5);
     }
@@ -714,25 +754,27 @@ mod tests {
     #[test]
     fn test_macos_artifact_types() {
         let config = CollectionConfig::default_macos();
-        
+
         // Verify all artifacts are macOS type
         for artifact in &config.artifacts {
             assert!(matches!(artifact.artifact_type, ArtifactType::MacOS(_)));
         }
-        
+
         // Only system.log should be required
-        let required_artifacts: Vec<&str> = config.artifacts.iter()
+        let required_artifacts: Vec<&str> = config
+            .artifacts
+            .iter()
             .filter(|a| a.required)
             .map(|a| a.name.as_str())
             .collect();
-        
+
         assert_eq!(required_artifacts, vec!["system.log"]);
     }
 
     #[test]
     fn test_windows_special_paths() {
         let config = CollectionConfig::default_windows();
-        
+
         // Check for Windows special path prefix
         for artifact in &config.artifacts {
             if artifact.source_path.starts_with(r"\\?\") {
@@ -741,14 +783,14 @@ mod tests {
                 assert!(after_prefix.starts_with("C:") || after_prefix.starts_with("%"));
             }
         }
-        
+
         // Check specific special files
-        let mft = config.artifacts.iter()
-            .find(|a| a.name == "MFT")
-            .unwrap();
+        let mft = config.artifacts.iter().find(|a| a.name == "MFT").unwrap();
         assert!(mft.source_path.contains("$MFT"));
-        
-        let usn = config.artifacts.iter()
+
+        let usn = config
+            .artifacts
+            .iter()
             .find(|a| a.name == "USN Journal")
             .unwrap();
         assert!(usn.source_path.contains("$Extend"));
@@ -760,21 +802,27 @@ mod tests {
         let config_windows = CollectionConfig::default_windows();
         let config_linux = CollectionConfig::default_linux();
         let config_macos = CollectionConfig::default_macos();
-        
+
         // Windows uses %VAR% style
-        let ntuser = config_windows.artifacts.iter()
+        let ntuser = config_windows
+            .artifacts
+            .iter()
             .find(|a| a.name == "NTUSER.DAT")
             .unwrap();
         assert!(ntuser.source_path.contains("%USERPROFILE%"));
-        
+
         // Linux uses $VAR style
-        let bash_history = config_linux.artifacts.iter()
+        let bash_history = config_linux
+            .artifacts
+            .iter()
             .find(|a| a.name == "bash_history")
             .unwrap();
         assert!(bash_history.source_path.contains("$HOME"));
-        
+
         // macOS uses $VAR style
-        let quarantine = config_macos.artifacts.iter()
+        let quarantine = config_macos
+            .artifacts
+            .iter()
             .find(|a| a.name == "quarantine")
             .unwrap();
         assert!(quarantine.source_path.contains("$HOME"));

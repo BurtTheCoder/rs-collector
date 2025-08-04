@@ -5,9 +5,9 @@ use log::debug;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::utils::streaming_zip::formats::{
-    ZipEntry, LocalFileHeader, CentralDirectoryHeader, EndOfCentralDirectoryRecord,
-    FileOptions, CompressionMethod, VERSION_NEEDED, DEFAULT_BIT_FLAG,
-    COMPRESSION_METHOD_DEFLATE, COMPRESSION_METHOD_STORE, VERSION_MADE_BY
+    CentralDirectoryHeader, CompressionMethod, EndOfCentralDirectoryRecord, FileOptions,
+    LocalFileHeader, ZipEntry, COMPRESSION_METHOD_DEFLATE, COMPRESSION_METHOD_STORE,
+    DEFAULT_BIT_FLAG, VERSION_MADE_BY, VERSION_NEEDED,
 };
 use crate::utils::streaming_zip::helpers::dos_time;
 
@@ -38,17 +38,21 @@ impl<'a, W: AsyncWrite + Unpin> StreamingZipWriter<W> {
             offset: 0,
         }
     }
-    
+
     /// Start a new file entry in the ZIP
-    pub async fn start_file<'b>(&'b mut self, name: &str, options: FileOptions) -> Result<StreamingFileWriter<'b, W>> {
+    pub async fn start_file<'b>(
+        &'b mut self,
+        name: &str,
+        options: FileOptions,
+    ) -> Result<StreamingFileWriter<'b, W>> {
         let compression_method = match options.compression_method {
             CompressionMethod::Stored => COMPRESSION_METHOD_STORE,
             CompressionMethod::Deflated => COMPRESSION_METHOD_DEFLATE,
         };
-        
+
         // Get last modified time
         let (last_mod_time, last_mod_date) = dos_time(options.last_modified);
-        
+
         // Write local file header
         let header = LocalFileHeader {
             version_needed: VERSION_NEEDED,
@@ -56,17 +60,17 @@ impl<'a, W: AsyncWrite + Unpin> StreamingZipWriter<W> {
             compression_method,
             last_mod_time,
             last_mod_date,
-            crc32: 0, // Will be updated later
-            compressed_size: 0, // Will be updated later
+            crc32: 0,             // Will be updated later
+            compressed_size: 0,   // Will be updated later
             uncompressed_size: 0, // Will be updated later
             file_name: name.as_bytes().to_vec(),
             extra_field: Vec::new(),
         };
-        
+
         let header_size = header.write(&mut self.writer).await?;
         let entry_offset = self.offset;
         self.offset += header_size;
-        
+
         // Create file writer
         let file_writer = StreamingFileWriter {
             zip_writer: self,
@@ -80,15 +84,15 @@ impl<'a, W: AsyncWrite + Unpin> StreamingZipWriter<W> {
             uncompressed_size: 0,
             compressed_size: 0,
         };
-        
+
         Ok(file_writer)
     }
-    
+
     /// Finish the ZIP file
     pub async fn finish(mut self) -> Result<W> {
         // Write central directory
         let central_dir_offset = self.offset;
-        
+
         for entry in &self.entries {
             let header = CentralDirectoryHeader {
                 version_made_by: VERSION_MADE_BY,
@@ -108,10 +112,10 @@ impl<'a, W: AsyncWrite + Unpin> StreamingZipWriter<W> {
                 extra_field: Vec::new(),
                 file_comment: Vec::new(),
             };
-            
+
             self.offset += header.write(&mut self.writer).await?;
         }
-        
+
         // Write end of central directory record
         let end_record = EndOfCentralDirectoryRecord {
             disk_number: 0,
@@ -122,13 +126,13 @@ impl<'a, W: AsyncWrite + Unpin> StreamingZipWriter<W> {
             central_dir_offset,
             comment: Vec::new(),
         };
-        
+
         end_record.write(&mut self.writer).await?;
-        
+
         // Return the writer
         Ok(self.writer)
     }
-    
+
     /// Add a directory entry to the ZIP
     pub async fn add_directory(&mut self, name: &str, options: FileOptions) -> Result<()> {
         // Ensure name ends with '/'
@@ -137,13 +141,13 @@ impl<'a, W: AsyncWrite + Unpin> StreamingZipWriter<W> {
         } else {
             format!("{}/", name)
         };
-        
+
         // Start a file entry for the directory
         let writer = self.start_file(&dir_name, options).await?;
-        
+
         // Finish the entry (no data to write)
         writer.finish().await?;
-        
+
         Ok(())
     }
 }
@@ -176,19 +180,19 @@ impl<'a, W: AsyncWrite + Unpin> StreamingFileWriter<'a, W> {
         // Update CRC32 and uncompressed size
         self.crc32.update(data);
         self.uncompressed_size += data.len() as u32;
-        
+
         // Write data
         let before = self.zip_writer.offset;
         self.zip_writer.writer.write_all(data).await?;
         self.zip_writer.offset += data.len() as u32;
         let after = self.zip_writer.offset;
-        
+
         // Update compressed size
         self.compressed_size += after - before;
-        
+
         Ok(())
     }
-    
+
     /// Update the local file header with final CRC32, compressed size, and uncompressed size.
     ///
     /// In a real implementation with a seekable writer, this method would seek back to the
@@ -205,32 +209,32 @@ impl<'a, W: AsyncWrite + Unpin> StreamingFileWriter<'a, W> {
     async fn update_header(&mut self, crc32: u32) -> Result<()> {
         // Create a buffer for the updated fields
         let mut buffer = BytesMut::new();
-        
+
         // CRC32
         buffer.extend_from_slice(&crc32.to_le_bytes());
-        
+
         // Compressed size
         buffer.extend_from_slice(&self.compressed_size.to_le_bytes());
-        
+
         // Uncompressed size
         buffer.extend_from_slice(&self.uncompressed_size.to_le_bytes());
-        
+
         // Calculate position of CRC32 field in the local file header
-        // Local file header signature (4) + version (2) + bit flag (2) + compression method (2) + 
+        // Local file header signature (4) + version (2) + bit flag (2) + compression method (2) +
         // last mod time (2) + last mod date (2) = 14 bytes
         let crc_position = self.offset + 14;
-        
+
         // Use the writer to seek and update the header
         // Note: This is a simplified approach. In a real implementation, you would need
         // to use a writer that supports seeking, which AsyncWrite doesn't directly support.
         // For now, we'll just log that we would update the header.
         debug!("Would update header at position {} with CRC32={:08x}, compressed_size={}, uncompressed_size={}",
                crc_position, crc32, self.compressed_size, self.uncompressed_size);
-        
+
         // In a real implementation with a seekable writer:
         // writer.seek(SeekFrom::Start(crc_position)).await?;
         // writer.write_all(&buffer).await?;
-        
+
         Ok(())
     }
 
@@ -249,12 +253,12 @@ impl<'a, W: AsyncWrite + Unpin> StreamingFileWriter<'a, W> {
         // This is necessary because finalize() consumes the hasher
         let crc32_clone = self.crc32.clone();
         let crc32 = crc32_clone.finalize();
-        
+
         // Update the local file header with the final values
         // Note: In a real implementation with a seekable writer, we would uncomment this
         // For now, we just log what we would do
         self.update_header(crc32).await?;
-        
+
         // Create entry for central directory
         self.zip_writer.entries.push(ZipEntry {
             name: self.name,
@@ -266,7 +270,7 @@ impl<'a, W: AsyncWrite + Unpin> StreamingFileWriter<'a, W> {
             last_mod_time: self.last_mod_time,
             last_mod_date: self.last_mod_date,
         });
-        
+
         Ok(())
     }
 }

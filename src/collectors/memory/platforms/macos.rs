@@ -3,36 +3,36 @@
 //! This module provides macOS-specific implementation for memory collection
 //! using the task_for_pid and mach APIs.
 
-use anyhow::{Result, Context, bail};
-use log::{debug, info, warn, error};
+use anyhow::{bail, Context, Result};
+use log::{debug, error, info, warn};
 use std::collections::HashMap;
-use std::path::Path;
 use std::ffi::CStr;
 use std::mem;
+use std::path::Path;
 use std::slice;
 
 #[cfg(feature = "memory_collection")]
-use mach_sys::task::task_info;
-#[cfg(feature = "memory_collection")]
-use mach_sys::traps::task_for_pid;
+use mach_sys::kern_return::KERN_SUCCESS;
 #[cfg(feature = "memory_collection")]
 use mach_sys::mach_types::task_port_t;
 #[cfg(feature = "memory_collection")]
 use mach_sys::port::mach_port_t;
 #[cfg(feature = "memory_collection")]
-use mach_sys::kern_return::KERN_SUCCESS;
+use mach_sys::task::task_info;
 #[cfg(feature = "memory_collection")]
-use mach_sys::vm::{mach_vm_read_overwrite, mach_vm_region};
-#[cfg(feature = "memory_collection")]
-use mach_sys::vm_types::{mach_vm_address_t, mach_vm_size_t};
-#[cfg(feature = "memory_collection")]
-use mach_sys::vm_region::{vm_region_basic_info_data_64_t, VM_REGION_BASIC_INFO_64};
-#[cfg(feature = "memory_collection")]
-use mach_sys::vm_prot::{VM_PROT_READ, VM_PROT_WRITE, VM_PROT_EXECUTE};
+use mach_sys::task_info::{task_dyld_info_data_t, TASK_DYLD_INFO};
 #[cfg(feature = "memory_collection")]
 use mach_sys::traps::mach_task_self;
 #[cfg(feature = "memory_collection")]
-use mach_sys::task_info::{TASK_DYLD_INFO, task_dyld_info_data_t};
+use mach_sys::traps::task_for_pid;
+#[cfg(feature = "memory_collection")]
+use mach_sys::vm::{mach_vm_read_overwrite, mach_vm_region};
+#[cfg(feature = "memory_collection")]
+use mach_sys::vm_prot::{VM_PROT_EXECUTE, VM_PROT_READ, VM_PROT_WRITE};
+#[cfg(feature = "memory_collection")]
+use mach_sys::vm_region::{vm_region_basic_info_data_64_t, VM_REGION_BASIC_INFO_64};
+#[cfg(feature = "memory_collection")]
+use mach_sys::vm_types::{mach_vm_address_t, mach_vm_size_t};
 #[cfg(feature = "memory_collection")]
 type task_info_t = *mut ::std::os::raw::c_int;
 #[cfg(feature = "memory_collection")]
@@ -40,12 +40,12 @@ const TASK_DYLD_INFO_COUNT: mach_msg_type_number_t = 5;
 #[cfg(feature = "memory_collection")]
 use mach_sys::dyld_images::{dyld_all_image_infos, dyld_image_info};
 #[cfg(feature = "memory_collection")]
-use mach_sys::message::mach_msg_type_number_t;
-#[cfg(feature = "memory_collection")]
 use mach_sys::ffi::c_int;
+#[cfg(feature = "memory_collection")]
+use mach_sys::message::mach_msg_type_number_t;
 
 use crate::collectors::memory::models::{
-    MemoryRegionInfo, MemoryRegionType, MemoryProtection, ModuleInfo,
+    MemoryProtection, MemoryRegionInfo, MemoryRegionType, ModuleInfo,
 };
 use crate::collectors::memory::platforms::MemoryCollectorImpl;
 use crate::collectors::volatile::models::ProcessInfo;
@@ -63,41 +63,44 @@ impl MemoryCollectorImpl for MacOSMemoryCollector {
         if !is_root {
             warn!("Memory collection on macOS requires root privileges for full access");
         }
-        
+
         info!("Initialized macOS memory collector");
-        
+
         #[cfg(feature = "memory_collection")]
         {
             Ok(Self {
                 task_ports: HashMap::new(),
             })
         }
-        
+
         #[cfg(not(feature = "memory_collection"))]
         {
-            bail!("Memory collection is not enabled. Recompile with the 'memory_collection' feature.");
+            bail!(
+                "Memory collection is not enabled. Recompile with the 'memory_collection' feature."
+            );
         }
     }
-    
+
     fn get_memory_regions(&self, process: &ProcessInfo) -> Result<Vec<MemoryRegionInfo>> {
         #[cfg(feature = "memory_collection")]
         {
             let pid = process.pid;
-            
+
             // Get task port for the process
             let task = self.get_task_port(pid)?;
-            
+
             // Enumerate memory regions
             let mut regions = Vec::new();
             let mut address: mach_vm_address_t = 0;
-            
+
             loop {
                 let mut info: vm_region_basic_info_data_64_t = unsafe { mem::zeroed() };
-                let mut count: mach_msg_type_number_t = 
-                    (mem::size_of::<vm_region_basic_info_data_64_t>() / mem::size_of::<c_int>()) as mach_msg_type_number_t;
+                let mut count: mach_msg_type_number_t =
+                    (mem::size_of::<vm_region_basic_info_data_64_t>() / mem::size_of::<c_int>())
+                        as mach_msg_type_number_t;
                 let mut object_name: mach_port_t = 0;
                 let mut size: mach_vm_size_t = 0;
-                
+
                 let kr = unsafe {
                     mach_vm_region(
                         task,
@@ -109,12 +112,12 @@ impl MemoryCollectorImpl for MacOSMemoryCollector {
                         &mut object_name,
                     )
                 };
-                
+
                 if kr != KERN_SUCCESS {
                     // End of regions
                     break;
                 }
-                
+
                 // Determine region type
                 let region_type = if info.protection & VM_PROT_EXECUTE != 0 {
                     MemoryRegionType::Code
@@ -127,14 +130,14 @@ impl MemoryCollectorImpl for MacOSMemoryCollector {
                 } else {
                     MemoryRegionType::Other
                 };
-                
+
                 // Convert protection flags
                 let protection = MemoryProtection {
                     read: info.protection & VM_PROT_READ != 0,
                     write: info.protection & VM_PROT_WRITE != 0,
                     execute: info.protection & VM_PROT_EXECUTE != 0,
                 };
-                
+
                 // Create region info
                 let region = MemoryRegionInfo {
                     base_address: address,
@@ -146,20 +149,22 @@ impl MemoryCollectorImpl for MacOSMemoryCollector {
                     dumped: false,
                     dump_path: None,
                 };
-                
+
                 regions.push(region);
-                
+
                 // Move to next region
                 address += size;
             }
-            
+
             // Try to match regions with modules
             if let Ok(modules) = self.get_modules(process) {
                 for module in &modules {
                     for region in &mut regions {
                         // If this region contains the module's base address
-                        if region.base_address <= module.base_address && 
-                           region.base_address + region.size >= module.base_address + module.size {
+                        if region.base_address <= module.base_address
+                            && region.base_address + region.size
+                                >= module.base_address + module.size
+                        {
                             region.mapped_file = Some(module.path.clone());
                             region.name = Some(module.name.clone());
                             break;
@@ -167,28 +172,30 @@ impl MemoryCollectorImpl for MacOSMemoryCollector {
                     }
                 }
             }
-            
+
             debug!("Found {} memory regions for process {}", regions.len(), pid);
-            
+
             Ok(regions)
         }
-        
+
         #[cfg(not(feature = "memory_collection"))]
         {
-            bail!("Memory collection is not enabled. Recompile with the 'memory_collection' feature.");
+            bail!(
+                "Memory collection is not enabled. Recompile with the 'memory_collection' feature."
+            );
         }
     }
-    
+
     fn read_memory(&self, pid: u32, address: u64, size: usize) -> Result<Vec<u8>> {
         #[cfg(feature = "memory_collection")]
         {
             // Get task port for the process
             let task = self.get_task_port(pid)?;
-            
+
             // Allocate buffer for the memory
             let mut buffer = vec![0u8; size];
             let mut out_size: mach_vm_size_t = 0;
-            
+
             // Read memory
             let kr = unsafe {
                 mach_vm_read_overwrite(
@@ -199,37 +206,47 @@ impl MemoryCollectorImpl for MacOSMemoryCollector {
                     &mut out_size,
                 )
             };
-            
+
             if kr != KERN_SUCCESS {
-                bail!("Failed to read memory at address {:x} for process {}: {}", address, pid, kr);
+                return Err(anyhow!(
+                    "Failed to read memory at address {:x} for process {}: {}",
+                    address,
+                    pid,
+                    kr
+                ));
             }
-            
+
             // Resize buffer to actual bytes read
             buffer.truncate(out_size as usize);
-            
-            debug!("Read {} bytes from address {:x} for process {}", out_size, address, pid);
-            
+
+            debug!(
+                "Read {} bytes from address {:x} for process {}",
+                out_size, address, pid
+            );
+
             Ok(buffer)
         }
-        
+
         #[cfg(not(feature = "memory_collection"))]
         {
-            bail!("Memory collection is not enabled. Recompile with the 'memory_collection' feature.");
+            bail!(
+                "Memory collection is not enabled. Recompile with the 'memory_collection' feature."
+            );
         }
     }
-    
+
     fn get_modules(&self, process: &ProcessInfo) -> Result<Vec<ModuleInfo>> {
         #[cfg(feature = "memory_collection")]
         {
             let pid = process.pid;
-            
+
             // Get task port for the process
             let task = self.get_task_port(pid)?;
-            
+
             // Get the dyld info from the task
             let mut dyld_info: task_dyld_info_data_t = unsafe { mem::zeroed() };
             let mut count = TASK_DYLD_INFO_COUNT;
-            
+
             let kr = unsafe {
                 task_info(
                     task,
@@ -238,15 +255,15 @@ impl MemoryCollectorImpl for MacOSMemoryCollector {
                     &mut count,
                 )
             };
-            
+
             if kr != KERN_SUCCESS {
-                bail!("Failed to get dyld info for process {}: {}", pid, kr);
+                return Err(anyhow!("Failed to get dyld info for process {}: {}", pid, kr));
             }
-            
+
             // Read the all_image_infos structure
             let mut all_image_infos: dyld_all_image_infos = unsafe { mem::zeroed() };
             let mut out_size: mach_vm_size_t = 0;
-            
+
             let kr = unsafe {
                 mach_vm_read_overwrite(
                     task,
@@ -256,16 +273,16 @@ impl MemoryCollectorImpl for MacOSMemoryCollector {
                     &mut out_size,
                 )
             };
-            
+
             if kr != KERN_SUCCESS {
-                bail!("Failed to read all_image_infos for process {}: {}", pid, kr);
+                return Err(anyhow!("Failed to read all_image_infos for process {}: {}", pid, kr));
             }
-            
+
             // Read the image_info array
             let image_count = all_image_infos.infoArrayCount as usize;
             let image_array_size = image_count * mem::size_of::<dyld_image_info>();
             let mut image_array_bytes = vec![0u8; image_array_size];
-            
+
             let kr = unsafe {
                 mach_vm_read_overwrite(
                     task,
@@ -275,11 +292,11 @@ impl MemoryCollectorImpl for MacOSMemoryCollector {
                     &mut out_size,
                 )
             };
-            
+
             if kr != KERN_SUCCESS {
-                bail!("Failed to read image array for process {}: {}", pid, kr);
+                return Err(anyhow!("Failed to read image array for process {}: {}", pid, kr));
             }
-            
+
             // Convert bytes to array of dyld_image_info
             let image_array = unsafe {
                 slice::from_raw_parts(
@@ -287,15 +304,15 @@ impl MemoryCollectorImpl for MacOSMemoryCollector {
                     image_count,
                 )
             };
-            
+
             let mut modules = Vec::new();
-            
+
             // Process each image
             for image in image_array {
                 // Read the image path
                 let mut path_buffer = [0u8; 1024];
                 let mut path_size: mach_vm_size_t = 0;
-                
+
                 let kr = unsafe {
                     mach_vm_read_overwrite(
                         task,
@@ -305,25 +322,25 @@ impl MemoryCollectorImpl for MacOSMemoryCollector {
                         &mut path_size,
                     )
                 };
-                
+
                 if kr != KERN_SUCCESS {
                     continue; // Skip this image if we can't read the path
                 }
-                
+
                 // Convert C string to Rust string
                 let path = unsafe {
                     CStr::from_ptr(path_buffer.as_ptr() as *const i8)
                         .to_string_lossy()
                         .to_string()
                 };
-                
+
                 // Extract module name from path
                 let name = Path::new(&path)
                     .file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or("")
                     .to_string();
-                
+
                 // Create module info
                 let module = ModuleInfo {
                     base_address: image.imageLoadAddress as u64,
@@ -332,18 +349,20 @@ impl MemoryCollectorImpl for MacOSMemoryCollector {
                     name,
                     version: None,
                 };
-                
+
                 modules.push(module);
             }
-            
+
             debug!("Found {} modules for process {}", modules.len(), pid);
-            
+
             Ok(modules)
         }
-        
+
         #[cfg(not(feature = "memory_collection"))]
         {
-            bail!("Memory collection is not enabled. Recompile with the 'memory_collection' feature.");
+            bail!(
+                "Memory collection is not enabled. Recompile with the 'memory_collection' feature."
+            );
         }
     }
 }
@@ -356,19 +375,19 @@ impl MacOSMemoryCollector {
         if let Some(&task) = self.task_ports.get(&pid) {
             return Ok(task);
         }
-        
+
         // Get the task port
         let mut task: task_port_t = 0;
         let kr = unsafe { task_for_pid(mach_task_self(), pid as i32, &mut task) };
-        
+
         if kr != KERN_SUCCESS {
-            bail!("Failed to get task port for process {}: {}", pid, kr);
+            return Err(anyhow!("Failed to get task port for process {}: {}", pid, kr));
         }
-        
+
         // Cache the task port
         let mut task_ports = self.task_ports.clone();
         task_ports.insert(pid, task);
-        
+
         Ok(task)
     }
 }

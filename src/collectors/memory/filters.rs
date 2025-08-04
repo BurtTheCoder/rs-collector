@@ -3,7 +3,7 @@
 //! This module provides filtering capabilities for processes and memory regions
 //! to control which data is collected during memory acquisition.
 
-use crate::collectors::memory::models::{MemoryRegionType, MemoryRegionInfo};
+use crate::collectors::memory::models::{MemoryRegionInfo, MemoryRegionType};
 use crate::collectors::volatile::models::ProcessInfo;
 use std::collections::HashSet;
 
@@ -70,9 +70,12 @@ impl ProcessFilter {
         }
 
         // Check if the process name matches any of the filters
-        if !self.process_names.is_empty() && self.process_names.iter().any(|name| {
-            process.name.to_lowercase().contains(&name.to_lowercase())
-        }) {
+        if !self.process_names.is_empty()
+            && self
+                .process_names
+                .iter()
+                .any(|name| process.name.to_lowercase().contains(&name.to_lowercase()))
+        {
             return true;
         }
 
@@ -89,9 +92,21 @@ impl ProcessFilter {
     fn is_system_process(process: &ProcessInfo) -> bool {
         // Common system process names
         const SYSTEM_PROCESS_NAMES: [&str; 15] = [
-            "system", "smss", "csrss", "wininit", "services", "lsass", "svchost",
-            "winlogon", "explorer", "dwm", "fontdrvhost", "runtimebroker",
-            "systemd", "init", "kernel",
+            "system",
+            "smss",
+            "csrss",
+            "wininit",
+            "services",
+            "lsass",
+            "svchost",
+            "winlogon",
+            "explorer",
+            "dwm",
+            "fontdrvhost",
+            "runtimebroker",
+            "systemd",
+            "init",
+            "kernel",
         ];
 
         // Check if the process name matches any of the system process names
@@ -117,11 +132,7 @@ pub struct MemoryRegionFilter {
 
 impl MemoryRegionFilter {
     /// Create a new memory region filter
-    pub fn new(
-        region_types: Vec<MemoryRegionType>,
-        min_size: u64,
-        max_size: u64,
-    ) -> Self {
+    pub fn new(region_types: Vec<MemoryRegionType>, min_size: u64, max_size: u64) -> Self {
         Self {
             region_types: region_types.into_iter().collect(),
             min_size,

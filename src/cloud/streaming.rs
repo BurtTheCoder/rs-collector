@@ -1,22 +1,18 @@
 use std::io;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 
-use anyhow::{Context as AnyhowContext, Result, anyhow};
 use crate::cloud::streaming_target::StreamingTarget;
-use crate::constants::{
-    MAX_UPLOAD_RETRIES as MAX_RETRIES,
-    S3_MIN_PART_SIZE as MIN_PART_SIZE
-};
+use crate::constants::{MAX_UPLOAD_RETRIES as MAX_RETRIES, S3_MIN_PART_SIZE as MIN_PART_SIZE};
+use anyhow::{anyhow, Context as AnyhowContext, Result};
 use bytes::{Bytes, BytesMut};
 use log::{debug, warn};
 use rusoto_core::ByteStream;
 use rusoto_s3::{
-    S3Client, S3, 
-    CreateMultipartUploadRequest, UploadPartRequest, CompleteMultipartUploadRequest,
-    CompletedPart, CompletedMultipartUpload, AbortMultipartUploadRequest
+    AbortMultipartUploadRequest, CompleteMultipartUploadRequest, CompletedMultipartUpload,
+    CompletedPart, CreateMultipartUploadRequest, S3Client, UploadPartRequest, S3,
 };
 use tokio::io::AsyncWrite;
 use tokio::sync::mpsc;
@@ -76,22 +72,29 @@ impl S3UploadStream {
     ) -> Result<Self> {
         // Ensure buffer size is at least the minimum part size
         let buffer_size = buffer_size_mb.max(5) * 1024 * 1024;
-        
+
         // Create multipart upload
-        let create_result = client.create_multipart_upload(CreateMultipartUploadRequest {
-            bucket: bucket.to_string(),
-            key: key.to_string(),
-            ..Default::default()
-        }).await.context("Failed to create multipart upload")?;
-        
-        let upload_id = create_result.upload_id
+        let create_result = client
+            .create_multipart_upload(CreateMultipartUploadRequest {
+                bucket: bucket.to_string(),
+                key: key.to_string(),
+                ..Default::default()
+            })
+            .await
+            .context("Failed to create multipart upload")?;
+
+        let upload_id = create_result
+            .upload_id
             .ok_or_else(|| anyhow!("No upload ID returned from S3"))?;
-            
-        debug!("Started multipart upload with ID: {} for {}", upload_id, key);
-        
+
+        debug!(
+            "Started multipart upload with ID: {} for {}",
+            upload_id, key
+        );
+
         // Create channel for upload tasks
         let (sender, mut receiver) = mpsc::channel::<UploadTask>(100);
-        
+
         // Create shared state
         let completed_parts = Arc::new(Mutex::new(Vec::new()));
         let completed_parts_clone = Arc::clone(&completed_parts);
@@ -101,19 +104,19 @@ impl S3UploadStream {
         let upload_id_clone = upload_id.clone();
         let bytes_uploaded = Arc::new(AtomicU64::new(0));
         let bytes_uploaded_clone = Arc::clone(&bytes_uploaded);
-        
+
         // Spawn background task to handle uploads
         let upload_task = tokio::spawn(async move {
             while let Some(task) = receiver.recv().await {
                 let part_size = task.data.len();
-                
+
                 // Upload with retries
                 let mut attempts = 0;
                 let mut success = false;
-                
+
                 while attempts < MAX_RETRIES && !success {
                     attempts += 1;
-                    
+
                     let upload_part_request = UploadPartRequest {
                         bucket: bucket_clone.clone(),
                         key: key_clone.clone(),
@@ -122,43 +125,50 @@ impl S3UploadStream {
                         body: Some(ByteStream::from(task.data.to_vec())),
                         ..Default::default()
                     };
-                    
+
                     match client_clone.upload_part(upload_part_request).await {
                         Ok(output) => {
                             if let Some(e_tag) = output.e_tag {
-                                let mut parts = completed_parts_clone.lock()
-                                    .map_err(|e| anyhow!("Failed to acquire lock on completed_parts: {}", e))?;
+                                let mut parts = completed_parts_clone.lock().map_err(|e| {
+                                    anyhow!("Failed to acquire lock on completed_parts: {}", e)
+                                })?;
                                 parts.push(CompletedPart {
                                     e_tag: Some(e_tag),
                                     part_number: Some(task.part_number as i64),
                                 });
-                                
+
                                 bytes_uploaded_clone.fetch_add(part_size as u64, Ordering::SeqCst);
                                 success = true;
                             }
-                        },
+                        }
                         Err(e) => {
                             if attempts >= MAX_RETRIES {
-                                return Err(anyhow!("Failed to upload part {} after {} attempts: {}", 
-                                                 task.part_number, MAX_RETRIES, e));
+                                return Err(anyhow!(
+                                    "Failed to upload part {} after {} attempts: {}",
+                                    task.part_number,
+                                    MAX_RETRIES,
+                                    e
+                                ));
                             }
-                            
+
                             let delay = Duration::from_millis(250 * 2u64.pow(attempts as u32));
-                            warn!("Part {} upload attempt {} failed, retrying in {:?}: {}", 
-                                 task.part_number, attempts, delay, e);
+                            warn!(
+                                "Part {} upload attempt {} failed, retrying in {:?}: {}",
+                                task.part_number, attempts, delay, e
+                            );
                             tokio::time::sleep(delay).await;
                         }
                     }
                 }
-                
+
                 if !success {
                     return Err(anyhow!("Failed to upload part {}", task.part_number));
                 }
             }
-            
+
             Ok(())
         });
-        
+
         Ok(Self {
             client,
             bucket: bucket.to_string(),
@@ -173,7 +183,7 @@ impl S3UploadStream {
             bytes_uploaded,
         })
     }
-    
+
     /// Get the number of bytes uploaded so far.
     ///
     /// This method is thread-safe and can be called from any context to check
@@ -185,7 +195,7 @@ impl S3UploadStream {
     pub fn bytes_uploaded(&self) -> u64 {
         self.bytes_uploaded.load(Ordering::SeqCst)
     }
-    
+
     /// Complete the multipart upload.
     ///
     /// This method finalizes the multipart upload by:
@@ -204,42 +214,44 @@ impl S3UploadStream {
     pub async fn complete(self) -> Result<()> {
         // Drop sender to close the channel
         drop(self.sender);
-        
+
         // Wait for upload task to complete
         match self._upload_task.await {
             Ok(result) => {
                 result?;
-            },
+            }
             Err(e) => {
                 return Err(anyhow!("Upload task failed: {}", e));
             }
         }
-        
+
         // Sort parts by part number
-        let mut parts = self.completed_parts.lock()
+        let mut parts = self
+            .completed_parts
+            .lock()
             .map_err(|e| anyhow!("Failed to acquire lock on completed_parts: {}", e))?
             .clone();
         parts.sort_by_key(|part| part.part_number.unwrap_or(0));
-        
+
         // Complete the multipart upload
         let complete_request = CompleteMultipartUploadRequest {
             bucket: self.bucket.clone(),
             key: self.key.clone(),
             upload_id: self.upload_id.clone(),
-            multipart_upload: Some(CompletedMultipartUpload {
-                parts: Some(parts),
-            }),
+            multipart_upload: Some(CompletedMultipartUpload { parts: Some(parts) }),
             ..Default::default()
         };
-        
-        self.client.complete_multipart_upload(complete_request).await
+
+        self.client
+            .complete_multipart_upload(complete_request)
+            .await
             .context("Failed to complete multipart upload")?;
-        
+
         debug!("Completed multipart upload for {}", self.key);
-        
+
         Ok(())
     }
-    
+
     /// Abort the multipart upload.
     ///
     /// This method cancels the multipart upload and cleans up any uploaded parts in S3.
@@ -259,12 +271,14 @@ impl S3UploadStream {
             upload_id: self.upload_id.clone(),
             ..Default::default()
         };
-        
-        self.client.abort_multipart_upload(abort_request).await
+
+        self.client
+            .abort_multipart_upload(abort_request)
+            .await
             .context("Failed to abort multipart upload")?;
-        
+
         debug!("Aborted multipart upload for {}", self.key);
-        
+
         Ok(())
     }
 }
@@ -273,15 +287,15 @@ impl StreamingTarget for S3UploadStream {
     fn target_name(&self) -> String {
         format!("s3://{}/{}", self.bucket, self.key)
     }
-    
+
     fn bytes_uploaded(&self) -> u64 {
         self.bytes_uploaded.load(Ordering::SeqCst)
     }
-    
+
     async fn complete(self) -> Result<()> {
         self.complete().await
     }
-    
+
     async fn abort(self) -> Result<()> {
         self.abort().await
     }
@@ -295,68 +309,68 @@ impl AsyncWrite for S3UploadStream {
     ) -> Poll<io::Result<usize>> {
         // Add data to buffer
         self.buffer.extend_from_slice(buf);
-        
+
         // If buffer is large enough, send a part
         if self.buffer.len() >= self.min_part_size {
             let part_number = self.part_number.fetch_add(1, Ordering::SeqCst);
             let data = self.buffer.split().freeze();
-            
+
             // Try to send the upload task
             match self.sender.try_send(UploadTask { data, part_number }) {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => {
                     match e {
                         mpsc::error::TrySendError::Full(task) => {
                             // Channel is full, put data back in buffer and return pending
                             self.buffer = BytesMut::from(&task.data[..]);
                             return Poll::Pending;
-                        },
+                        }
                         mpsc::error::TrySendError::Closed(_) => {
                             return Poll::Ready(Err(io::Error::new(
                                 io::ErrorKind::BrokenPipe,
-                                "Upload channel closed"
+                                "Upload channel closed",
                             )));
                         }
                     }
                 }
             }
         }
-        
+
         Poll::Ready(Ok(buf.len()))
     }
-    
+
     fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         // Nothing to do for flush
         Poll::Ready(Ok(()))
     }
-    
+
     fn poll_shutdown(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         // Send any remaining data
         if !self.buffer.is_empty() {
             let part_number = self.part_number.fetch_add(1, Ordering::SeqCst);
             let data = self.buffer.split().freeze();
-            
+
             // Try to send the upload task
             match self.sender.try_send(UploadTask { data, part_number }) {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => {
                     match e {
                         mpsc::error::TrySendError::Full(task) => {
                             // Channel is full, put data back in buffer and return pending
                             self.buffer = BytesMut::from(&task.data[..]);
                             return Poll::Pending;
-                        },
+                        }
                         mpsc::error::TrySendError::Closed(_) => {
                             return Poll::Ready(Err(io::Error::new(
                                 io::ErrorKind::BrokenPipe,
-                                "Upload channel closed"
+                                "Upload channel closed",
                             )));
                         }
                     }
                 }
             }
         }
-        
+
         Poll::Ready(Ok(()))
     }
 }
@@ -364,8 +378,8 @@ impl AsyncWrite for S3UploadStream {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::io::AsyncWriteExt;
     use std::sync::atomic::AtomicUsize;
+    use tokio::io::AsyncWriteExt;
 
     #[test]
     fn test_min_part_size_constant() {
@@ -393,7 +407,7 @@ mod tests {
         let bytes_uploaded = Arc::new(AtomicU64::new(0));
         bytes_uploaded.store(100, Ordering::SeqCst);
         assert_eq!(bytes_uploaded.load(Ordering::SeqCst), 100);
-        
+
         bytes_uploaded.fetch_add(50, Ordering::SeqCst);
         assert_eq!(bytes_uploaded.load(Ordering::SeqCst), 150);
     }
@@ -402,7 +416,7 @@ mod tests {
     fn test_part_number_atomic() {
         let part_number = AtomicU64::new(1);
         assert_eq!(part_number.load(Ordering::SeqCst), 1);
-        
+
         let old = part_number.fetch_add(1, Ordering::SeqCst);
         assert_eq!(old, 1);
         assert_eq!(part_number.load(Ordering::SeqCst), 2);
@@ -414,7 +428,7 @@ mod tests {
         let buffer_size = 3; // 3MB (less than minimum)
         let actual_size = buffer_size.max(5) * 1024 * 1024;
         assert_eq!(actual_size, 5 * 1024 * 1024);
-        
+
         // Test normal buffer size
         let buffer_size = 10; // 10MB
         let actual_size = buffer_size.max(5) * 1024 * 1024;
@@ -424,7 +438,7 @@ mod tests {
     #[test]
     fn test_completed_parts_mutex() {
         let completed_parts = Arc::new(Mutex::new(Vec::<CompletedPart>::new()));
-        
+
         // Add a part
         {
             let mut parts = completed_parts.lock().unwrap();
@@ -433,7 +447,7 @@ mod tests {
                 part_number: Some(1),
             });
         }
-        
+
         // Check it was added
         {
             let parts = completed_parts.lock().unwrap();
@@ -458,9 +472,9 @@ mod tests {
                 part_number: Some(2),
             },
         ];
-        
+
         parts.sort_by_key(|part| part.part_number.unwrap_or(0));
-        
+
         assert_eq!(parts[0].part_number, Some(1));
         assert_eq!(parts[1].part_number, Some(2));
         assert_eq!(parts[2].part_number, Some(3));
@@ -486,7 +500,7 @@ mod tests {
     fn test_buffer_split() {
         let mut buffer = BytesMut::new();
         buffer.extend_from_slice(b"hello world");
-        
+
         let split = buffer.split();
         assert_eq!(split.len(), 11);
         assert_eq!(buffer.len(), 0);
@@ -519,10 +533,10 @@ mod tests {
     #[tokio::test]
     async fn test_mpsc_channel_basic() {
         let (sender, mut receiver) = mpsc::channel::<String>(10);
-        
+
         // Send a message
         sender.send("hello".to_string()).await.unwrap();
-        
+
         // Receive it
         let msg = receiver.recv().await.unwrap();
         assert_eq!(msg, "hello");
@@ -531,13 +545,13 @@ mod tests {
     #[tokio::test]
     async fn test_mpsc_channel_try_send() {
         let (sender, mut _receiver) = mpsc::channel::<String>(1);
-        
+
         // First send should succeed
         assert!(sender.try_send("first".to_string()).is_ok());
-        
+
         // Second send should fail (channel full)
         match sender.try_send("second".to_string()) {
-            Err(mpsc::error::TrySendError::Full(_)) => {},
+            Err(mpsc::error::TrySendError::Full(_)) => {}
             _ => panic!("Expected channel to be full"),
         }
     }
@@ -546,7 +560,7 @@ mod tests {
     fn test_bytes_freeze() {
         let mut bytes_mut = BytesMut::new();
         bytes_mut.extend_from_slice(b"test data");
-        
+
         let bytes = bytes_mut.freeze();
         assert_eq!(&bytes[..], b"test data");
         assert_eq!(bytes.len(), 9);
@@ -557,7 +571,7 @@ mod tests {
         // Test Poll::Ready
         let ready: Poll<Result<(), io::Error>> = Poll::Ready(Ok(()));
         assert!(matches!(ready, Poll::Ready(Ok(()))));
-        
+
         // Test Poll::Pending
         let pending: Poll<Result<(), io::Error>> = Poll::Pending;
         assert!(matches!(pending, Poll::Pending));

@@ -1,31 +1,31 @@
 //! Benchmarks for artifact collection performance.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
-use rust_collector::config::{Artifact, ArtifactType};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use rust_collector::collectors::collector::collect_artifacts;
+use rust_collector::config::{Artifact, ArtifactType};
 use std::fs;
 use tempfile::TempDir;
 
 /// Benchmark artifact collection with different numbers of artifacts
 fn bench_artifact_collection_count(c: &mut Criterion) {
     let mut group = c.benchmark_group("artifact_collection_count");
-    
+
     let artifact_counts = vec![1, 10, 50, 100];
-    
+
     for count in artifact_counts {
         let temp_dir = TempDir::new().unwrap();
         let output_dir = TempDir::new().unwrap();
-        
+
         // Create test files and artifacts
         let mut artifacts = Vec::new();
         let mut total_size = 0u64;
-        
+
         for i in 0..count {
             let file_path = temp_dir.path().join(format!("artifact_{}.txt", i));
             let data = format!("Test artifact content {}", i).repeat(100);
             fs::write(&file_path, &data).unwrap();
             total_size += data.len() as u64;
-            
+
             artifacts.push(Artifact {
                 name: format!("artifact_{}", i),
                 artifact_type: ArtifactType::Logs,
@@ -37,7 +37,7 @@ fn bench_artifact_collection_count(c: &mut Criterion) {
                 regex: None,
             });
         }
-        
+
         group.throughput(Throughput::Bytes(total_size));
         group.bench_with_input(
             BenchmarkId::new("collect", format!("{}_artifacts", count)),
@@ -55,29 +55,29 @@ fn bench_artifact_collection_count(c: &mut Criterion) {
             },
         );
     }
-    
+
     group.finish();
 }
 
 /// Benchmark collection with different file sizes
 fn bench_artifact_file_sizes(c: &mut Criterion) {
     let mut group = c.benchmark_group("artifact_file_sizes");
-    
+
     let sizes = vec![
         (1024, "1KB"),
         (100 * 1024, "100KB"),
         (1024 * 1024, "1MB"),
         (10 * 1024 * 1024, "10MB"),
     ];
-    
+
     for (size, label) in sizes {
         let temp_dir = TempDir::new().unwrap();
         let output_dir = TempDir::new().unwrap();
-        
+
         let file_path = temp_dir.path().join("large_artifact.bin");
         let data = vec![0u8; size];
         fs::write(&file_path, &data).unwrap();
-        
+
         let artifacts = vec![Artifact {
             name: "large_artifact".to_string(),
             artifact_type: ArtifactType::FileSystem,
@@ -88,7 +88,7 @@ fn bench_artifact_file_sizes(c: &mut Criterion) {
             metadata: std::collections::HashMap::new(),
             regex: None,
         }];
-        
+
         group.throughput(Throughput::Bytes(size as u64));
         group.bench_with_input(
             BenchmarkId::new("collect_size", label),
@@ -102,28 +102,28 @@ fn bench_artifact_file_sizes(c: &mut Criterion) {
             },
         );
     }
-    
+
     group.finish();
 }
 
 /// Benchmark parallel collection performance
 fn bench_parallel_collection(c: &mut Criterion) {
     let mut group = c.benchmark_group("parallel_collection");
-    
+
     // Create a mix of small and large files
     let temp_dir = TempDir::new().unwrap();
     let output_dir = TempDir::new().unwrap();
-    
+
     let mut artifacts = Vec::new();
     let mut total_size = 0u64;
-    
+
     // 20 small files (10KB each)
     for i in 0..20 {
         let file_path = temp_dir.path().join(format!("small_{}.txt", i));
         let data = vec![b'A'; 10 * 1024];
         fs::write(&file_path, &data).unwrap();
         total_size += data.len() as u64;
-        
+
         artifacts.push(Artifact {
             name: format!("small_{}", i),
             artifact_type: ArtifactType::Logs,
@@ -135,14 +135,14 @@ fn bench_parallel_collection(c: &mut Criterion) {
             regex: None,
         });
     }
-    
+
     // 5 large files (1MB each)
     for i in 0..5 {
         let file_path = temp_dir.path().join(format!("large_{}.bin", i));
         let data = vec![b'B'; 1024 * 1024];
         fs::write(&file_path, &data).unwrap();
         total_size += data.len() as u64;
-        
+
         artifacts.push(Artifact {
             name: format!("large_{}", i),
             artifact_type: ArtifactType::FileSystem,
@@ -154,7 +154,7 @@ fn bench_parallel_collection(c: &mut Criterion) {
             regex: None,
         });
     }
-    
+
     group.throughput(Throughput::Bytes(total_size));
     group.bench_function("mixed_parallel", |b| {
         b.iter(|| {
@@ -169,7 +169,7 @@ fn bench_parallel_collection(c: &mut Criterion) {
             }
         });
     });
-    
+
     group.finish();
 }
 

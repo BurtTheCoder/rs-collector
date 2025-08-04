@@ -3,15 +3,12 @@
 //! These tests verify memory dump acquisition and volatile data
 //! collection capabilities across different platforms.
 
+use anyhow::Result;
 use std::fs;
 use tempfile::TempDir;
-use anyhow::Result;
 
-use rust_collector::config::{
-    Artifact, ArtifactType,
-    VolatileDataType
-};
 use rust_collector::collectors::collector::collect_artifacts;
+use rust_collector::config::{Artifact, ArtifactType, VolatileDataType};
 
 /// Test volatile data collection configuration
 #[test]
@@ -23,7 +20,7 @@ fn test_volatile_data_config() {
         VolatileDataType::Memory,
         VolatileDataType::Disks,
     ];
-    
+
     for vtype in volatile_types {
         let artifact = Artifact {
             name: format!("volatile_{:?}", vtype),
@@ -35,8 +32,11 @@ fn test_volatile_data_config() {
             metadata: std::collections::HashMap::new(),
             regex: None,
         };
-        
-        assert!(matches!(artifact.artifact_type, ArtifactType::VolatileData(_)));
+
+        assert!(matches!(
+            artifact.artifact_type,
+            ArtifactType::VolatileData(_)
+        ));
     }
 }
 
@@ -44,28 +44,26 @@ fn test_volatile_data_config() {
 #[test]
 fn test_process_list_collection() -> Result<()> {
     let output_dir = TempDir::new()?;
-    
-    let artifacts = vec![
-        Artifact {
-            name: "process_list".to_string(),
-            artifact_type: ArtifactType::VolatileData(VolatileDataType::Processes),
-            source_path: String::new(),
-            destination_name: "processes.json".to_string(),
-            description: Some("Current process list".to_string()),
-            required: false,
-            metadata: std::collections::HashMap::new(),
-            regex: None,
-        }
-    ];
-    
+
+    let artifacts = vec![Artifact {
+        name: "process_list".to_string(),
+        artifact_type: ArtifactType::VolatileData(VolatileDataType::Processes),
+        source_path: String::new(),
+        destination_name: "processes.json".to_string(),
+        description: Some("Current process list".to_string()),
+        required: false,
+        metadata: std::collections::HashMap::new(),
+        regex: None,
+    }];
+
     // Note: Actual process collection might fail in test environment
     // We're testing the configuration and attempt
     let _ = collect_artifacts(&artifacts, output_dir.path());
-    
+
     // Check if output file was created (might be empty in test env)
     let _process_file = output_dir.path().join("processes.json");
     // File might not exist if volatile collection is not available
-    
+
     Ok(())
 }
 
@@ -73,22 +71,20 @@ fn test_process_list_collection() -> Result<()> {
 #[test]
 fn test_network_connections_collection() -> Result<()> {
     let output_dir = TempDir::new()?;
-    
-    let artifacts = vec![
-        Artifact {
-            name: "network_connections".to_string(),
-            artifact_type: ArtifactType::VolatileData(VolatileDataType::NetworkConnections),
-            source_path: String::new(),
-            destination_name: "connections.json".to_string(),
-            description: Some("Active network connections".to_string()),
-            required: false,
-            metadata: std::collections::HashMap::new(),
-            regex: None,
-        }
-    ];
-    
+
+    let artifacts = vec![Artifact {
+        name: "network_connections".to_string(),
+        artifact_type: ArtifactType::VolatileData(VolatileDataType::NetworkConnections),
+        source_path: String::new(),
+        destination_name: "connections.json".to_string(),
+        description: Some("Active network connections".to_string()),
+        required: false,
+        metadata: std::collections::HashMap::new(),
+        regex: None,
+    }];
+
     let _ = collect_artifacts(&artifacts, output_dir.path());
-    
+
     Ok(())
 }
 
@@ -96,13 +92,13 @@ fn test_network_connections_collection() -> Result<()> {
 #[test]
 fn test_multiple_volatile_collection() -> Result<()> {
     let output_dir = TempDir::new()?;
-    
+
     let volatile_types = vec![
         (VolatileDataType::Processes, "processes.json"),
         (VolatileDataType::NetworkConnections, "connections.json"),
         (VolatileDataType::SystemInfo, "system_info.json"),
     ];
-    
+
     let artifacts: Vec<Artifact> = volatile_types
         .into_iter()
         .map(|(vtype, filename)| Artifact {
@@ -116,9 +112,9 @@ fn test_multiple_volatile_collection() -> Result<()> {
             regex: None,
         })
         .collect();
-    
+
     let _ = collect_artifacts(&artifacts, output_dir.path());
-    
+
     // Volatile collection might not be available in all test environments
     Ok(())
 }
@@ -152,7 +148,7 @@ fn test_memory_artifact_config() {
             regex: None,
         },
     ];
-    
+
     for artifact in memory_artifacts {
         // Verify artifact type
         match &artifact.artifact_type {
@@ -166,12 +162,12 @@ fn test_memory_artifact_config() {
 #[test]
 fn test_memory_collection_size_limits() {
     let size_limits = vec![
-        1024 * 1024,           // 1 MB
-        100 * 1024 * 1024,     // 100 MB
-        1024 * 1024 * 1024,    // 1 GB
-        u64::MAX,              // No limit
+        1024 * 1024,        // 1 MB
+        100 * 1024 * 1024,  // 100 MB
+        1024 * 1024 * 1024, // 1 GB
+        u64::MAX,           // No limit
     ];
-    
+
     for limit in size_limits {
         // In real implementation, this would control how much memory to read
         assert!(limit > 0);
@@ -182,7 +178,7 @@ fn test_memory_collection_size_limits() {
 #[test]
 fn test_volatile_data_json_format() -> Result<()> {
     let temp_dir = TempDir::new()?;
-    
+
     // Create a mock volatile data JSON
     let mock_process_data = r#"{
         "timestamp": "2024-01-01T00:00:00Z",
@@ -204,17 +200,17 @@ fn test_volatile_data_json_format() -> Result<()> {
             }
         ]
     }"#;
-    
+
     let json_path = temp_dir.path().join("processes.json");
     fs::write(&json_path, mock_process_data)?;
-    
+
     // Verify JSON is valid
     let content = fs::read_to_string(&json_path)?;
     let parsed: serde_json::Value = serde_json::from_str(&content)?;
-    
+
     assert!(parsed["processes"].is_array());
     assert_eq!(parsed["processes"].as_array().unwrap().len(), 2);
-    
+
     Ok(())
 }
 
@@ -222,7 +218,7 @@ fn test_volatile_data_json_format() -> Result<()> {
 #[test]
 fn test_loaded_modules_format() -> Result<()> {
     let temp_dir = TempDir::new()?;
-    
+
     // Create mock loaded modules data
     let mock_modules = r#"{
         "timestamp": "2024-01-01T00:00:00Z",
@@ -241,17 +237,17 @@ fn test_loaded_modules_format() -> Result<()> {
             }
         ]
     }"#;
-    
+
     let json_path = temp_dir.path().join("modules.json");
     fs::write(&json_path, mock_modules)?;
-    
+
     let content = fs::read_to_string(&json_path)?;
     let parsed: serde_json::Value = serde_json::from_str(&content)?;
-    
+
     assert!(parsed["modules"].is_array());
     let modules = parsed["modules"].as_array().unwrap();
     assert_eq!(modules.len(), 2);
-    
+
     // Verify module structure
     for module in modules {
         assert!(module["name"].is_string());
@@ -259,7 +255,7 @@ fn test_loaded_modules_format() -> Result<()> {
         assert!(module["size"].is_number());
         assert!(module["path"].is_string());
     }
-    
+
     Ok(())
 }
 
@@ -267,7 +263,7 @@ fn test_loaded_modules_format() -> Result<()> {
 #[test]
 fn test_services_collection_format() -> Result<()> {
     let temp_dir = TempDir::new()?;
-    
+
     let mock_services = r#"{
         "timestamp": "2024-01-01T00:00:00Z",
         "services": [
@@ -281,12 +277,12 @@ fn test_services_collection_format() -> Result<()> {
             }
         ]
     }"#;
-    
+
     let json_path = temp_dir.path().join("services.json");
     fs::write(&json_path, mock_services)?;
-    
+
     let parsed: serde_json::Value = serde_json::from_str(&fs::read_to_string(&json_path)?)?;
     assert!(parsed["services"].is_array());
-    
+
     Ok(())
 }

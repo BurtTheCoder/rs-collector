@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Configuration for regex-based artifact collection
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -6,19 +6,19 @@ pub struct RegexConfig {
     /// Whether regex matching is enabled for this artifact
     #[serde(default)]
     pub enabled: bool,
-    
+
     /// Whether to recursively search directories
     #[serde(default)]
     pub recursive: bool,
-    
+
     /// Regex pattern for files to include
     #[serde(default = "default_include_pattern")]
     pub include_pattern: String,
-    
+
     /// Regex pattern for files to exclude
     #[serde(default)]
     pub exclude_pattern: String,
-    
+
     /// Maximum directory depth for recursive searches
     #[serde(default)]
     pub max_depth: Option<usize>,
@@ -48,7 +48,7 @@ mod tests {
     #[test]
     fn test_regex_config_default() {
         let config = RegexConfig::default();
-        
+
         // Test default values
         assert!(!config.enabled);
         assert!(!config.recursive);
@@ -66,12 +66,12 @@ mod tests {
             exclude_pattern: r"\.tmp$".to_string(),
             max_depth: Some(5),
         };
-        
+
         // Test JSON serialization
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("enabled"));
         assert!(json.contains(r"\.log$"));
-        
+
         // Test deserialization
         let deserialized: RegexConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.enabled, config.enabled);
@@ -90,13 +90,13 @@ mod tests {
             exclude_pattern: r"debug".to_string(),
             max_depth: Some(3),
         };
-        
+
         // Test YAML serialization
         let yaml = serde_yaml::to_string(&config).unwrap();
         assert!(yaml.contains("enabled: true"));
         assert!(yaml.contains("recursive: false"));
         assert!(yaml.contains("include_pattern"));
-        
+
         // Test deserialization
         let deserialized: RegexConfig = serde_yaml::from_str(&yaml).unwrap();
         assert_eq!(deserialized.enabled, config.enabled);
@@ -110,7 +110,7 @@ mod tests {
 enabled: true
 include_pattern: "*.txt"
 "#;
-        
+
         let config: RegexConfig = serde_yaml::from_str(yaml).unwrap();
         assert!(config.enabled);
         assert_eq!(config.include_pattern, "*.txt");
@@ -123,13 +123,13 @@ include_pattern: "*.txt"
     fn test_default_include_pattern() {
         // Test the default pattern function
         assert_eq!(default_include_pattern(), ".*");
-        
+
         // Test that deserialization without include_pattern uses default
         let yaml = r#"
 enabled: true
 recursive: true
 "#;
-        
+
         let config: RegexConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.include_pattern, ".*");
     }
@@ -143,7 +143,7 @@ recursive: true
             exclude_pattern: "exclude".to_string(),
             max_depth: Some(10),
         };
-        
+
         let cloned = original.clone();
         assert_eq!(cloned.enabled, original.enabled);
         assert_eq!(cloned.recursive, original.recursive);
@@ -161,11 +161,11 @@ recursive: true
             exclude_pattern: r"(temp|tmp|cache).*".to_string(),
             max_depth: None,
         };
-        
+
         // Ensure special regex characters are preserved
         let json = serde_json::to_string(&config).unwrap();
         let deserialized: RegexConfig = serde_json::from_str(&json).unwrap();
-        
+
         assert_eq!(deserialized.include_pattern, r"^[a-z]+\.(log|txt)$");
         assert_eq!(deserialized.exclude_pattern, r"(temp|tmp|cache).*");
     }
@@ -180,10 +180,10 @@ recursive: true
             exclude_pattern: "".to_string(),
             max_depth: None,
         };
-        
+
         let yaml1 = serde_yaml::to_string(&config1).unwrap();
         assert!(yaml1.contains("max_depth:") || !yaml1.contains("max_depth"));
-        
+
         // Test Some(0)
         let config2 = RegexConfig {
             enabled: true,
@@ -192,11 +192,11 @@ recursive: true
             exclude_pattern: "".to_string(),
             max_depth: Some(0),
         };
-        
+
         let yaml2 = serde_yaml::to_string(&config2).unwrap();
         let deserialized2: RegexConfig = serde_yaml::from_str(&yaml2).unwrap();
         assert_eq!(deserialized2.max_depth, Some(0));
-        
+
         // Test large depth
         let config3 = RegexConfig {
             enabled: true,
@@ -205,7 +205,7 @@ recursive: true
             exclude_pattern: "".to_string(),
             max_depth: Some(999),
         };
-        
+
         let yaml3 = serde_yaml::to_string(&config3).unwrap();
         let deserialized3: RegexConfig = serde_yaml::from_str(&yaml3).unwrap();
         assert_eq!(deserialized3.max_depth, Some(999));
@@ -220,11 +220,11 @@ recursive: true
             exclude_pattern: "".to_string(),
             max_depth: None,
         };
-        
+
         // Empty patterns should be preserved
         let json = serde_json::to_string(&config).unwrap();
         let deserialized: RegexConfig = serde_json::from_str(&json).unwrap();
-        
+
         assert_eq!(deserialized.include_pattern, "");
         assert_eq!(deserialized.exclude_pattern, "");
     }

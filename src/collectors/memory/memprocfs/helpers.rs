@@ -1,21 +1,19 @@
 //! Common helper functions for MemProcFS memory collection
 
 #[cfg(feature = "memory_collection")]
-use anyhow::{Result, bail};
-#[cfg(feature = "memory_collection")]  
+use anyhow::{bail, Result};
+#[cfg(feature = "memory_collection")]
 use log::warn;
 #[cfg(feature = "memory_collection")]
-use std::path::Path;
+use memprocfs::*;
 #[cfg(feature = "memory_collection")]
 #[cfg(feature = "memory_collection")]
 use std::env;
 #[cfg(feature = "memory_collection")]
-use memprocfs::*;
+use std::path::Path;
 
 #[cfg(feature = "memory_collection")]
-use crate::collectors::memory::models::{
-    MemoryRegionType, MemoryProtection,
-};
+use crate::collectors::memory::models::{MemoryProtection, MemoryRegionType};
 
 /// Get the appropriate MemProcFS library path
 #[cfg(feature = "memory_collection")]
@@ -36,7 +34,7 @@ pub fn get_library_path() -> Result<String> {
             "C:\\Program Files\\MemProcFS\\vmm.dll",
             "C:\\MemProcFS\\vmm.dll",
         ];
-        
+
         for path in paths {
             if Path::new(path).exists() {
                 return Ok(path.to_string());
@@ -52,7 +50,7 @@ pub fn get_library_path() -> Result<String> {
             "/usr/lib/vmm.so",
             "/opt/memprocfs/vmm.so",
         ];
-        
+
         for path in paths {
             if Path::new(path).exists() {
                 return Ok(path.to_string());
@@ -67,7 +65,7 @@ pub fn get_library_path() -> Result<String> {
             "/usr/local/lib/vmm.dylib",
             "/opt/memprocfs/vmm.dylib",
         ];
-        
+
         for path in paths {
             if Path::new(path).exists() {
                 return Ok(path.to_string());
@@ -98,7 +96,9 @@ pub fn convert_region_type(region: &VmmProcessMapVadEntry) -> MemoryRegionType {
         return MemoryRegionType::Stack;
     } else if region.info.contains("Heap") {
         return MemoryRegionType::Heap;
-    } else if !region.info.is_empty() && (region.info.ends_with(".exe") || region.info.ends_with(".dll")) {
+    } else if !region.info.is_empty()
+        && (region.info.ends_with(".exe") || region.info.ends_with(".dll"))
+    {
         return MemoryRegionType::Code;
     } else if !region.info.is_empty() {
         return MemoryRegionType::MappedFile;

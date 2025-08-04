@@ -6,16 +6,16 @@ use log::{info, warn};
 pub fn enable_privileges() -> Result<()> {
     // Check if running as administrator
     let is_admin = is_admin();
-    
+
     if !is_admin {
         warn!("Not running as Administrator, some artifacts may be inaccessible");
     } else {
         info!("Running as Administrator");
     }
-    
+
     // Import the existing Windows privilege code
     crate::windows::enable_privileges()?;
-    
+
     Ok(())
 }
 

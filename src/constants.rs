@@ -1,5 +1,5 @@
 //! Global constants for the rs-collector application.
-//! 
+//!
 //! This module centralizes all hardcoded values to improve maintainability
 //! and make configuration changes easier.
 
@@ -122,8 +122,8 @@ pub const DEV_PATH: &str = "/dev";
 
 // Common file extensions
 pub const COMPRESSED_EXTENSIONS: &[&str] = &[
-    "zip", "gz", "xz", "bz2", "7z", "rar", "jpg", "jpeg",
-    "png", "gif", "mp3", "mp4", "avi", "mov", "mpg", "mpeg"
+    "zip", "gz", "xz", "bz2", "7z", "rar", "jpg", "jpeg", "png", "gif", "mp3", "mp4", "avi", "mov",
+    "mpg", "mpeg",
 ];
 
 pub const EXECUTABLE_EXTENSIONS: &[&str] = &["exe", "dll", "so", "dylib"];
@@ -139,22 +139,22 @@ pub const DEFAULT_VOLATILE_DATA_NAME: &str = "volatile_data.json";
 pub mod test {
     /// Test memory size (8GB)
     pub const TEST_TOTAL_MEMORY: u64 = 8 * 1024 * 1024 * 1024;
-    
+
     /// Test used memory (4GB)
     pub const TEST_USED_MEMORY: u64 = 4 * 1024 * 1024 * 1024;
-    
+
     /// Test swap size (2GB)
     pub const TEST_TOTAL_SWAP: u64 = 2 * 1024 * 1024 * 1024;
-    
+
     /// Test used swap (512MB)
     pub const TEST_USED_SWAP: u64 = 512 * 1024 * 1024;
-    
+
     /// Test disk space (100GB)
     pub const TEST_TOTAL_DISK_SPACE: u64 = 100 * 1024 * 1024 * 1024;
-    
+
     /// Test available disk space (50GB)
     pub const TEST_AVAILABLE_DISK_SPACE: u64 = 50 * 1024 * 1024 * 1024;
-    
+
     /// Test data size (2MB)
     pub const TEST_DATA_SIZE: usize = 2 * 1024 * 1024;
 }

@@ -1,13 +1,13 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Metadata for a collected forensic artifact.
-/// 
+///
 /// This struct contains comprehensive metadata about each artifact collected
 /// during forensic acquisition. It's designed to maintain chain of custody
 /// and provide investigators with crucial file system metadata.
-/// 
+///
 /// # Fields
-/// 
+///
 /// * `original_path` - The original file system path where the artifact was located
 /// * `collection_time` - ISO 8601 timestamp of when the artifact was collected
 /// * `file_size` - Size of the file in bytes
@@ -15,9 +15,9 @@ use serde::{Serialize, Deserialize};
 /// * `accessed_time` - Optional last access timestamp (ISO 8601 format)
 /// * `modified_time` - Optional last modification timestamp (ISO 8601 format)
 /// * `is_locked` - Whether the file was locked/in-use during collection
-/// 
+///
 /// # Serialization
-/// 
+///
 /// This struct supports JSON and other serde-compatible formats for easy
 /// integration with analysis tools and long-term storage.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -74,7 +74,7 @@ mod tests {
 
         let json = serde_json::to_string(&metadata).unwrap();
         let deserialized: ArtifactMetadata = serde_json::from_str(&json).unwrap();
-        
+
         assert_eq!(deserialized.created_time, None);
         assert_eq!(deserialized.accessed_time, None);
         assert_eq!(deserialized.modified_time, None);
@@ -152,7 +152,10 @@ mod tests {
 
         let json = serde_json::to_string(&metadata).unwrap();
         let deserialized: ArtifactMetadata = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.original_path, "/path with spaces/special@chars#.txt");
+        assert_eq!(
+            deserialized.original_path,
+            "/path with spaces/special@chars#.txt"
+        );
     }
 
     #[test]
@@ -170,7 +173,7 @@ mod tests {
         let yaml = serde_yaml::to_string(&metadata).unwrap();
         assert!(yaml.contains("original_path:"));
         assert!(yaml.contains("/yaml/test.yml"));
-        
+
         let deserialized: ArtifactMetadata = serde_yaml::from_str(&yaml).unwrap();
         assert_eq!(deserialized.original_path, metadata.original_path);
         assert_eq!(deserialized.is_locked, metadata.is_locked);

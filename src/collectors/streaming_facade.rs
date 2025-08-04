@@ -14,7 +14,7 @@ mod tests {
         assert!(doc.contains("Streaming artifact collection"));
         assert!(doc.contains("streaming artifacts directly to remote storage"));
     }
-    
+
     #[test]
     fn test_re_export_comment() {
         // Verify re-export comment exists

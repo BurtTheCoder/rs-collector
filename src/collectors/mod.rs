@@ -50,7 +50,7 @@
 //!
 //! // Collect artifacts in parallel
 //! let results = collect_artifacts_parallel(&config.artifacts, output_dir).await?;
-//! 
+//!
 //! println!("Collected {} artifacts", results.len());
 //! # Ok(())
 //! # }

@@ -7,10 +7,10 @@
 //! - Security configuration and policies
 //! - Credential scrubbing to prevent sensitive data exposure
 
-pub mod path_validator;
 pub mod config;
 pub mod credential_scrubber;
+pub mod path_validator;
 
-pub use path_validator::{validate_path, sanitize_filename, validate_output_path};
-pub use config::{SecurityConfig, SecurityEvent, log_security_event};
-pub use credential_scrubber::{scrub_credentials, scrub_path, safe_error_message};
+pub use config::{log_security_event, SecurityConfig, SecurityEvent};
+pub use credential_scrubber::{safe_error_message, scrub_credentials, scrub_path};
+pub use path_validator::{sanitize_filename, validate_output_path, validate_path};

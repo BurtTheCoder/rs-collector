@@ -3,14 +3,12 @@
 //! These tests verify end-to-end functionality of the collector
 //! in common usage scenarios.
 
+use anyhow::Result;
 use std::fs;
 use tempfile::TempDir;
-use anyhow::Result;
 
-use rust_collector::config::{
-    Artifact, ArtifactType
-};
 use rust_collector::collectors::collector::collect_artifacts;
+use rust_collector::config::{Artifact, ArtifactType};
 
 /// Test basic file collection on the current platform
 #[test]
@@ -24,25 +22,23 @@ fn test_basic_file_collection() -> Result<()> {
     let output_dir = TempDir::new()?;
 
     // Create a simple artifact configuration
-    let artifacts = vec![
-        Artifact {
-            name: "test_file".to_string(),
-            artifact_type: ArtifactType::FileSystem,
-            source_path: test_file_path.to_string_lossy().to_string(),
-            destination_name: "collected_test_file.txt".to_string(),
-            description: Some("Test file for integration testing".to_string()),
-            required: true,
-            metadata: std::collections::HashMap::new(),
-            regex: None,
-        }
-    ];
+    let artifacts = vec![Artifact {
+        name: "test_file".to_string(),
+        artifact_type: ArtifactType::FileSystem,
+        source_path: test_file_path.to_string_lossy().to_string(),
+        destination_name: "collected_test_file.txt".to_string(),
+        description: Some("Test file for integration testing".to_string()),
+        required: true,
+        metadata: std::collections::HashMap::new(),
+        regex: None,
+    }];
 
     // Collect the artifact
     let results = collect_artifacts(&artifacts, output_dir.path())?;
 
     // Verify the file was collected
     assert_eq!(results.len(), 1);
-    
+
     // Check that the output file exists (files are placed in 'fs' subdirectory)
     let collected_path = output_dir.path().join("fs/collected_test_file.txt");
     assert!(collected_path.exists(), "Collected file should exist");
@@ -98,9 +94,16 @@ fn test_multiple_artifact_collection() -> Result<()> {
 
     // Check each collected file
     for (filename, expected_content) in &files {
-        let collected_path = output_dir.path().join("fs").join(format!("collected_{}", filename));
-        assert!(collected_path.exists(), "File {} should be collected", filename);
-        
+        let collected_path = output_dir
+            .path()
+            .join("fs")
+            .join(format!("collected_{}", filename));
+        assert!(
+            collected_path.exists(),
+            "File {} should be collected",
+            filename
+        );
+
         let collected_content = fs::read_to_string(&collected_path)?;
         assert_eq!(&collected_content, expected_content);
     }
@@ -153,10 +156,10 @@ fn test_directory_structure_collection() -> Result<()> {
     let test_dir = TempDir::new()?;
     let sub_dir = test_dir.path().join("subdir");
     fs::create_dir(&sub_dir)?;
-    
+
     let file1_path = test_dir.path().join("root_file.txt");
     let file2_path = sub_dir.join("sub_file.txt");
-    
+
     fs::write(&file1_path, "Root level file")?;
     fs::write(&file2_path, "Subdirectory file")?;
 
@@ -198,7 +201,7 @@ fn test_directory_structure_collection() -> Result<()> {
     let collection_dir = fs_dir.join("collection");
     assert!(collection_dir.exists());
     assert!(collection_dir.join("root_file.txt").exists());
-    
+
     let sub_collection_dir = collection_dir.join("subdir");
     assert!(sub_collection_dir.exists());
     assert!(sub_collection_dir.join("sub_file.txt").exists());

@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use log::{error, warn};
 
 use crate::cloud::sftp::SFTPConfig;
@@ -31,29 +31,36 @@ pub async fn stream_artifacts_to_sftp(
     buffer_size_mb: usize,
 ) -> Result<()> {
     // Create SFTP upload stream
-    let sftp_stream = match create_sftp_upload_stream(config.clone(), remote_path, buffer_size_mb).await {
-        Ok(stream) => stream,
-        Err(e) => {
-            error!("Failed to create SFTP upload stream: {}", e);
-            return Err(e);
-        }
-    };
-    
+    let sftp_stream =
+        match create_sftp_upload_stream(config.clone(), remote_path, buffer_size_mb).await {
+            Ok(stream) => stream,
+            Err(e) => {
+                error!("Failed to create SFTP upload stream: {}", e);
+                return Err(e);
+            }
+        };
+
     // Keep the remote path for potential cleanup
     let remote_path_for_cleanup = remote_path.to_string();
     let config_for_cleanup = config.clone();
-    
+
     // Stream artifacts using the core implementation
     match core::stream_directory_to_target(source_dir, sftp_stream, buffer_size_mb).await {
         Ok(_) => Ok(()),
         Err(e) => {
             error!("Failed to stream artifacts to SFTP: {}", e);
-            
+
             // Try to clean up the remote file manually
             warn!("Attempting to clean up the failed upload...");
-            
+
             // Create a new SFTP connection to delete the file
-            if let Ok(cleanup_stream) = create_sftp_upload_stream(config_for_cleanup, &remote_path_for_cleanup, buffer_size_mb).await {
+            if let Ok(cleanup_stream) = create_sftp_upload_stream(
+                config_for_cleanup,
+                &remote_path_for_cleanup,
+                buffer_size_mb,
+            )
+            .await
+            {
                 if let Err(abort_err) = cleanup_stream.abort().await {
                     warn!("Failed to clean up remote file: {}", abort_err);
                 } else {
@@ -62,7 +69,7 @@ pub async fn stream_artifacts_to_sftp(
             } else {
                 warn!("Failed to create SFTP connection for cleanup");
             }
-            
+
             Err(anyhow!("Failed to stream artifacts to SFTP: {}", e))
         }
     }
@@ -89,29 +96,36 @@ pub async fn stream_file_to_sftp(
     buffer_size_mb: usize,
 ) -> Result<()> {
     // Create SFTP upload stream
-    let sftp_stream = match create_sftp_upload_stream(config.clone(), remote_path, buffer_size_mb).await {
-        Ok(stream) => stream,
-        Err(e) => {
-            error!("Failed to create SFTP upload stream: {}", e);
-            return Err(e);
-        }
-    };
-    
+    let sftp_stream =
+        match create_sftp_upload_stream(config.clone(), remote_path, buffer_size_mb).await {
+            Ok(stream) => stream,
+            Err(e) => {
+                error!("Failed to create SFTP upload stream: {}", e);
+                return Err(e);
+            }
+        };
+
     // Keep the remote path for potential cleanup
     let remote_path_for_cleanup = remote_path.to_string();
     let config_for_cleanup = config.clone();
-    
+
     // Stream file using the core implementation
     match core::stream_file_to_target(file_path, sftp_stream, buffer_size_mb).await {
         Ok(_) => Ok(()),
         Err(e) => {
             error!("Failed to stream file to SFTP: {}", e);
-            
+
             // Try to clean up the remote file manually
             warn!("Attempting to clean up the failed upload...");
-            
+
             // Create a new SFTP connection to delete the file
-            if let Ok(cleanup_stream) = create_sftp_upload_stream(config_for_cleanup, &remote_path_for_cleanup, buffer_size_mb).await {
+            if let Ok(cleanup_stream) = create_sftp_upload_stream(
+                config_for_cleanup,
+                &remote_path_for_cleanup,
+                buffer_size_mb,
+            )
+            .await
+            {
                 if let Err(abort_err) = cleanup_stream.abort().await {
                     warn!("Failed to clean up remote file: {}", abort_err);
                 } else {
@@ -120,7 +134,7 @@ pub async fn stream_file_to_sftp(
             } else {
                 warn!("Failed to create SFTP connection for cleanup");
             }
-            
+
             Err(anyhow!("Failed to stream file to SFTP: {}", e))
         }
     }
@@ -210,15 +224,10 @@ mod tests {
             connection_timeout_sec: 30,
             max_retries: 3,
         };
-        
+
         let temp_dir = TempDir::new().unwrap();
-        let result = stream_artifacts_to_sftp(
-            temp_dir.path(),
-            config,
-            "/remote/test.zip",
-            5
-        ).await;
-        
+        let result = stream_artifacts_to_sftp(temp_dir.path(), config, "/remote/test.zip", 5).await;
+
         // Should fail because we can't create real SFTP connection in tests
         assert!(result.is_err());
     }
@@ -237,18 +246,13 @@ mod tests {
             connection_timeout_sec: 30,
             max_retries: 3,
         };
-        
+
         let temp_dir = TempDir::new().unwrap();
         let test_file = temp_dir.path().join("test.txt");
         std::fs::write(&test_file, "test content").unwrap();
-        
-        let result = stream_file_to_sftp(
-            &test_file,
-            config,
-            "/remote/test.txt",
-            5
-        ).await;
-        
+
+        let result = stream_file_to_sftp(&test_file, config, "/remote/test.txt", 5).await;
+
         // Should fail because we can't create real SFTP connection in tests
         assert!(result.is_err());
     }

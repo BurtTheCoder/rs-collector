@@ -23,7 +23,7 @@ use anyhow::Result;
 /// Collect all volatile system data
 pub async fn collect_volatile_data() -> Result<models::VolatileData> {
     let mut collector = VolatileDataCollector::new();
-    
+
     Ok(models::VolatileData {
         system_info: collector.collect_system_info()?,
         processes: collector.collect_processes()?,

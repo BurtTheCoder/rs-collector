@@ -51,7 +51,7 @@
 //! // Create S3 client
 //! let region = Region::UsEast1;
 //! let client = Arc::new(S3Client::new(region.clone()));
-//! 
+//!
 //! // Create upload stream
 //! let upload_stream = S3UploadStream::new(
 //!     client,

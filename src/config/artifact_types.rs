@@ -1,5 +1,5 @@
+use serde::{Deserialize, Serialize};
 use std::fmt;
-use serde::{Serialize, Deserialize};
 
 /// OS-agnostic artifact types
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
@@ -11,15 +11,15 @@ pub enum ArtifactType {
     SystemInfo,
     Memory,
     Network,
-    
+
     // OS-specific types
     Windows(WindowsArtifactType),
     Linux(LinuxArtifactType),
     MacOS(MacOSArtifactType),
-    
+
     // Volatile data collection
     VolatileData(VolatileDataType),
-    
+
     // For custom artifacts
     Custom,
 }
@@ -140,7 +140,7 @@ mod tests {
         assert_eq!(ArtifactType::FileSystem.to_string(), "FileSystem");
         assert_eq!(ArtifactType::Logs.to_string(), "Logs");
         assert_eq!(ArtifactType::Custom.to_string(), "Custom");
-        
+
         // OS-specific
         assert_eq!(
             ArtifactType::Windows(WindowsArtifactType::Registry).to_string(),
@@ -154,7 +154,7 @@ mod tests {
             ArtifactType::MacOS(MacOSArtifactType::UnifiedLogs).to_string(),
             "MacOS-UnifiedLogs"
         );
-        
+
         // Volatile data
         assert_eq!(
             ArtifactType::VolatileData(VolatileDataType::SystemInfo).to_string(),
@@ -166,7 +166,10 @@ mod tests {
     fn test_volatile_data_type_display() {
         assert_eq!(VolatileDataType::SystemInfo.to_string(), "SystemInfo");
         assert_eq!(VolatileDataType::Processes.to_string(), "Processes");
-        assert_eq!(VolatileDataType::NetworkConnections.to_string(), "NetworkConnections");
+        assert_eq!(
+            VolatileDataType::NetworkConnections.to_string(),
+            "NetworkConnections"
+        );
         assert_eq!(VolatileDataType::Memory.to_string(), "Memory");
         assert_eq!(VolatileDataType::Disks.to_string(), "Disks");
     }
@@ -176,7 +179,7 @@ mod tests {
         // Test PartialEq implementation
         assert_eq!(ArtifactType::FileSystem, ArtifactType::FileSystem);
         assert_ne!(ArtifactType::FileSystem, ArtifactType::Logs);
-        
+
         assert_eq!(
             ArtifactType::Windows(WindowsArtifactType::MFT),
             ArtifactType::Windows(WindowsArtifactType::MFT)
@@ -190,13 +193,13 @@ mod tests {
     #[test]
     fn test_artifact_type_hash() {
         use std::collections::HashSet;
-        
+
         // Test that artifact types can be used in HashSet
         let mut set = HashSet::new();
         set.insert(ArtifactType::FileSystem);
         set.insert(ArtifactType::Logs);
         set.insert(ArtifactType::Windows(WindowsArtifactType::EventLog));
-        
+
         assert!(set.contains(&ArtifactType::FileSystem));
         assert!(set.contains(&ArtifactType::Windows(WindowsArtifactType::EventLog)));
         assert!(!set.contains(&ArtifactType::Custom));
@@ -214,7 +217,7 @@ mod tests {
             WindowsArtifactType::ShimCache,
             WindowsArtifactType::AmCache,
         ];
-        
+
         for win_type in types {
             let artifact = ArtifactType::Windows(win_type.clone());
             let serialized = serde_json::to_string(&artifact).unwrap();
@@ -238,7 +241,7 @@ mod tests {
             LinuxArtifactType::Yum,
             LinuxArtifactType::Systemd,
         ];
-        
+
         for linux_type in types {
             let artifact = ArtifactType::Linux(linux_type.clone());
             let serialized = serde_json::to_string(&artifact).unwrap();
@@ -260,7 +263,7 @@ mod tests {
             MacOSArtifactType::LaunchAgents,
             MacOSArtifactType::LaunchDaemons,
         ];
-        
+
         for macos_type in types {
             let artifact = ArtifactType::MacOS(macos_type.clone());
             let serialized = serde_json::to_string(&artifact).unwrap();
@@ -275,7 +278,7 @@ mod tests {
         let original = ArtifactType::Windows(WindowsArtifactType::Registry);
         let cloned = original.clone();
         assert_eq!(original, cloned);
-        
+
         let volatile_original = VolatileDataType::Processes;
         let volatile_cloned = volatile_original.clone();
         assert_eq!(volatile_original, volatile_cloned);
@@ -288,7 +291,7 @@ mod tests {
         let yaml = serde_yaml::to_string(&artifact).unwrap();
         assert!(yaml.contains("Linux"));
         assert!(yaml.contains("Journal"));
-        
+
         let deserialized: ArtifactType = serde_yaml::from_str(&yaml).unwrap();
         assert_eq!(deserialized, artifact);
     }

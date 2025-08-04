@@ -1,11 +1,11 @@
 //! # rs-collector
 //!
-//! A high-performance, cross-platform Digital Forensics and Incident Response (DFIR) 
+//! A high-performance, cross-platform Digital Forensics and Incident Response (DFIR)
 //! artifact collector written in Rust.
 //!
 //! ## Overview
 //!
-//! rs-collector is designed to efficiently collect forensic artifacts from Windows, macOS, 
+//! rs-collector is designed to efficiently collect forensic artifacts from Windows, macOS,
 //! and Linux systems. It supports parallel collection, streaming uploads to cloud storage,
 //! memory collection, and various output formats.
 //!
@@ -32,10 +32,10 @@
 //! # fn main() -> anyhow::Result<()> {
 //! // Load configuration
 //! let config = CollectionConfig::default();
-//! 
+//!
 //! // Collect artifacts
 //! let results = collect_artifacts(&config.artifacts, Path::new("/tmp/output"))?;
-//! 
+//!
 //! println!("Collected {} artifacts", results.len());
 //! # Ok(())
 //! # }

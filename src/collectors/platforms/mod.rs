@@ -1,12 +1,12 @@
 pub mod common;
-pub mod windows;
 pub mod linux;
 pub mod macos;
+pub mod windows;
 
 use log::info;
 
-use crate::config::Artifact;
 use crate::collectors::collector::ArtifactCollector;
+use crate::config::Artifact;
 
 /// Get the appropriate collector for the current platform
 pub fn get_platform_collector() -> Box<dyn ArtifactCollector> {
@@ -35,8 +35,9 @@ pub fn get_platform_collector() -> Box<dyn ArtifactCollector> {
 /// Filter artifacts based on the current platform
 pub fn filter_artifacts_for_platform(artifacts: &[Artifact]) -> Vec<Artifact> {
     let platform_collector = get_platform_collector();
-    
-    artifacts.iter()
+
+    artifacts
+        .iter()
         .filter(|artifact| platform_collector.supports_artifact_type(&artifact.artifact_type))
         .cloned()
         .collect()

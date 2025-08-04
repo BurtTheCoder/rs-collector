@@ -1,32 +1,32 @@
+use anyhow::{Context, Result};
 use serde_json::json;
 use uuid::Uuid;
-use anyhow::{Result, Context};
 
-use crate::models::ArtifactMetadata;
-use crate::collectors::volatile::models::VolatileDataSummary;
 use crate::collectors::memory::models::MemoryCollectionSummary;
+use crate::collectors::volatile::models::VolatileDataSummary;
+use crate::models::ArtifactMetadata;
 
 /// Create a JSON summary of the collection.
-/// 
+///
 /// Generates a comprehensive JSON report containing metadata about all collected
 /// artifacts, system information, and collection statistics. This summary is
 /// crucial for chain of custody and forensic analysis documentation.
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `hostname` - The hostname of the system where collection occurred
 /// * `timestamp` - ISO 8601 formatted timestamp of when collection started
 /// * `artifacts` - Vector of tuples containing (path, metadata) for each collected artifact
 /// * `volatile_data_summary` - Optional summary of volatile data collection
 /// * `memory_collection_summary` - Optional summary of memory collection
-/// 
+///
 /// # Returns
-/// 
+///
 /// * `Ok(String)` - JSON formatted summary as a string
 /// * `Err` - If JSON serialization fails
-/// 
+///
 /// # Example Output
-/// 
+///
 /// ```json
 /// {
 ///   "collection_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -39,13 +39,14 @@ use crate::collectors::memory::models::MemoryCollectionSummary;
 /// }
 /// ```
 pub fn create_collection_summary(
-    hostname: &str, 
-    timestamp: &str, 
+    hostname: &str,
+    timestamp: &str,
     artifacts: &[(String, ArtifactMetadata)],
     volatile_data_summary: Option<&VolatileDataSummary>,
-    memory_collection_summary: Option<&MemoryCollectionSummary>
+    memory_collection_summary: Option<&MemoryCollectionSummary>,
 ) -> Result<String> {
-    let artifact_list: Vec<_> = artifacts.iter()
+    let artifact_list: Vec<_> = artifacts
+        .iter()
         .map(|(path, meta)| {
             json!({
                 "path": path,
@@ -59,7 +60,7 @@ pub fn create_collection_summary(
             })
         })
         .collect();
-    
+
     let mut summary = json!({
         "collection_id": Uuid::new_v4().to_string(),
         "hostname": hostname,
@@ -69,7 +70,7 @@ pub fn create_collection_summary(
         "artifacts": artifact_list,
         "organization": "file_system_based" // Indicate the new organization method
     });
-    
+
     // Add volatile data summary if available
     if let Some(vd_summary) = volatile_data_summary {
         let volatile_data = json!({
@@ -88,12 +89,12 @@ pub fn create_collection_summary(
                 "volatile/disks.json"
             ]
         });
-        
+
         if let Some(obj) = summary.as_object_mut() {
             obj.insert("volatile_data".to_string(), volatile_data);
         }
     }
-    
+
     // Add memory collection summary if available
     if let Some(mem_summary) = memory_collection_summary {
         let memory_data = json!({
@@ -107,12 +108,12 @@ pub fn create_collection_summary(
             "duration_seconds": mem_summary.duration_seconds,
             "summary_file": "process_memory/memory_collection_summary.json"
         });
-        
+
         if let Some(obj) = summary.as_object_mut() {
             obj.insert("process_memory".to_string(), memory_data);
         }
     }
-    
+
     serde_json::to_string_pretty(&summary).context("Failed to serialize collection summary to JSON")
 }
 
@@ -168,13 +169,8 @@ mod tests {
             ("artifact2.log".to_string(), create_test_artifact_metadata()),
         ];
 
-        let result = create_collection_summary(
-            "test-host",
-            "2024-01-01T00:00:00Z",
-            &artifacts,
-            None,
-            None
-        );
+        let result =
+            create_collection_summary("test-host", "2024-01-01T00:00:00Z", &artifacts, None, None);
 
         assert!(result.is_ok());
         let json_str = result.unwrap();
@@ -200,9 +196,7 @@ mod tests {
 
     #[test]
     fn test_summary_with_volatile_data() {
-        let artifacts = vec![
-            ("test.txt".to_string(), create_test_artifact_metadata()),
-        ];
+        let artifacts = vec![("test.txt".to_string(), create_test_artifact_metadata())];
         let volatile_summary = create_test_volatile_summary();
 
         let result = create_collection_summary(
@@ -210,7 +204,7 @@ mod tests {
             "2024-01-01T00:00:00Z",
             &artifacts,
             Some(&volatile_summary),
-            None
+            None,
         );
 
         assert!(result.is_ok());
@@ -226,7 +220,7 @@ mod tests {
         assert_eq!(json["volatile_data"]["process_count"], 100);
         assert_eq!(json["volatile_data"]["network_interface_count"], 3);
         assert_eq!(json["volatile_data"]["disk_count"], 2);
-        
+
         // Verify files array
         let files = json["volatile_data"]["files"].as_array().unwrap();
         assert_eq!(files.len(), 5);
@@ -235,9 +229,7 @@ mod tests {
 
     #[test]
     fn test_summary_with_memory_data() {
-        let artifacts = vec![
-            ("test.txt".to_string(), create_test_artifact_metadata()),
-        ];
+        let artifacts = vec![("test.txt".to_string(), create_test_artifact_metadata())];
         let memory_summary = create_test_memory_summary();
 
         let result = create_collection_summary(
@@ -245,7 +237,7 @@ mod tests {
             "2024-01-01T00:00:00Z",
             &artifacts,
             None,
-            Some(&memory_summary)
+            Some(&memory_summary),
         );
 
         assert!(result.is_ok());
@@ -258,9 +250,15 @@ mod tests {
         assert_eq!(json["process_memory"]["processes_collected"], 45);
         assert_eq!(json["process_memory"]["processes_skipped"], 3);
         assert_eq!(json["process_memory"]["processes_failed"], 2);
-        assert_eq!(json["process_memory"]["total_memory_collected"], 1024 * 1024 * 1024);
+        assert_eq!(
+            json["process_memory"]["total_memory_collected"],
+            1024 * 1024 * 1024
+        );
         assert_eq!(json["process_memory"]["duration_seconds"], 300.0);
-        assert_eq!(json["process_memory"]["summary_file"], "process_memory/memory_collection_summary.json");
+        assert_eq!(
+            json["process_memory"]["summary_file"],
+            "process_memory/memory_collection_summary.json"
+        );
     }
 
     #[test]
@@ -277,7 +275,7 @@ mod tests {
             "2024-01-01T00:00:00Z",
             &artifacts,
             Some(&volatile_summary),
-            Some(&memory_summary)
+            Some(&memory_summary),
         );
 
         assert!(result.is_ok());
@@ -295,13 +293,8 @@ mod tests {
     fn test_empty_artifacts_list() {
         let artifacts = vec![];
 
-        let result = create_collection_summary(
-            "test-host",
-            "2024-01-01T00:00:00Z",
-            &artifacts,
-            None,
-            None
-        );
+        let result =
+            create_collection_summary("test-host", "2024-01-01T00:00:00Z", &artifacts, None, None);
 
         assert!(result.is_ok());
         let json_str = result.unwrap();
@@ -312,26 +305,16 @@ mod tests {
 
     #[test]
     fn test_unique_collection_ids() {
-        let artifacts = vec![
-            ("test.txt".to_string(), create_test_artifact_metadata()),
-        ];
+        let artifacts = vec![("test.txt".to_string(), create_test_artifact_metadata())];
 
         // Create two summaries
-        let result1 = create_collection_summary(
-            "test-host",
-            "2024-01-01T00:00:00Z",
-            &artifacts,
-            None,
-            None
-        ).unwrap();
+        let result1 =
+            create_collection_summary("test-host", "2024-01-01T00:00:00Z", &artifacts, None, None)
+                .unwrap();
 
-        let result2 = create_collection_summary(
-            "test-host",
-            "2024-01-01T00:00:00Z",
-            &artifacts,
-            None,
-            None
-        ).unwrap();
+        let result2 =
+            create_collection_summary("test-host", "2024-01-01T00:00:00Z", &artifacts, None, None)
+                .unwrap();
 
         let json1: Value = serde_json::from_str(&result1).unwrap();
         let json2: Value = serde_json::from_str(&result2).unwrap();
@@ -344,17 +327,15 @@ mod tests {
     fn test_special_characters_in_paths() {
         let mut metadata = create_test_artifact_metadata();
         metadata.original_path = "/path/with spaces/and-special@chars#.txt".to_string();
-        
-        let artifacts = vec![
-            ("artifact with spaces.txt".to_string(), metadata),
-        ];
+
+        let artifacts = vec![("artifact with spaces.txt".to_string(), metadata)];
 
         let result = create_collection_summary(
             "host-name-123",
             "2024-01-01T00:00:00Z",
             &artifacts,
             None,
-            None
+            None,
         );
 
         assert!(result.is_ok());
@@ -362,23 +343,19 @@ mod tests {
         let json: Value = serde_json::from_str(&json_str).unwrap();
 
         assert_eq!(json["artifacts"][0]["path"], "artifact with spaces.txt");
-        assert_eq!(json["artifacts"][0]["original_path"], "/path/with spaces/and-special@chars#.txt");
+        assert_eq!(
+            json["artifacts"][0]["original_path"],
+            "/path/with spaces/and-special@chars#.txt"
+        );
     }
 
     #[test]
     fn test_artifact_metadata_fields() {
         let metadata = create_test_artifact_metadata();
-        let artifacts = vec![
-            ("test.txt".to_string(), metadata.clone()),
-        ];
+        let artifacts = vec![("test.txt".to_string(), metadata.clone())];
 
-        let result = create_collection_summary(
-            "test-host",
-            "2024-01-01T00:00:00Z",
-            &artifacts,
-            None,
-            None
-        );
+        let result =
+            create_collection_summary("test-host", "2024-01-01T00:00:00Z", &artifacts, None, None);
 
         assert!(result.is_ok());
         let json_str = result.unwrap();
@@ -396,21 +373,14 @@ mod tests {
 
     #[test]
     fn test_json_pretty_formatting() {
-        let artifacts = vec![
-            ("test.txt".to_string(), create_test_artifact_metadata()),
-        ];
+        let artifacts = vec![("test.txt".to_string(), create_test_artifact_metadata())];
 
-        let result = create_collection_summary(
-            "test-host",
-            "2024-01-01T00:00:00Z",
-            &artifacts,
-            None,
-            None
-        );
+        let result =
+            create_collection_summary("test-host", "2024-01-01T00:00:00Z", &artifacts, None, None);
 
         assert!(result.is_ok());
         let json_str = result.unwrap();
-        
+
         // Pretty formatting should include newlines and indentation
         assert!(json_str.contains('\n'));
         assert!(json_str.contains("  ")); // Indentation

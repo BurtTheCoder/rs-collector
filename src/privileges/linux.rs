@@ -1,5 +1,5 @@
-use anyhow::{Result, Context};
-use log::{info, warn, debug};
+use anyhow::{Context, Result};
+use log::{debug, info, warn};
 use std::process::Command;
 
 /// Enable necessary Linux privileges for artifact collection
@@ -11,7 +11,7 @@ pub fn enable_privileges() -> Result<()> {
     } else {
         info!("Running as root");
     }
-    
+
     // Try to set capabilities if not root
     if !is_root() {
         debug!("Attempting to set capabilities");
@@ -19,7 +19,7 @@ pub fn enable_privileges() -> Result<()> {
             debug!("Failed to set capabilities: {}", e);
         }
     }
-    
+
     Ok(())
 }
 
@@ -37,22 +37,22 @@ fn set_capabilities() -> Result<()> {
         .arg("--print")
         .output()
         .context("Failed to execute capsh command")?;
-    
+
     if !output.status.success() {
         return Err(anyhow::anyhow!("Failed to check capabilities"));
     }
-    
+
     let output_str = String::from_utf8_lossy(&output.stdout);
     debug!("Current capabilities: {}", output_str);
-    
+
     // We can't actually set capabilities at runtime in most cases,
     // but we can check if we have the necessary ones
-    
+
     // For a real implementation, we would need to:
     // 1. Check if we have CAP_DAC_READ_SEARCH
     // 2. If not, try to use libcap to set it
     // 3. If that fails, warn the user
-    
+
     // For now, just return Ok since this is a placeholder
     Ok(())
 }

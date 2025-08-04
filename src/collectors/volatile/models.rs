@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// System information data structure
 #[derive(Debug, Serialize, Deserialize)]

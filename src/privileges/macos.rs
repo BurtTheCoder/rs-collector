@@ -1,5 +1,5 @@
-use anyhow::{Result, Context};
-use log::{info, warn, debug};
+use anyhow::{Context, Result};
+use log::{debug, info, warn};
 use std::process::Command;
 
 /// Enable necessary macOS privileges for artifact collection
@@ -10,7 +10,7 @@ pub fn enable_privileges() -> Result<()> {
     } else {
         info!("Running as root");
     }
-    
+
     // Check for Full Disk Access
     if let Err(e) = check_full_disk_access() {
         warn!("May not have Full Disk Access: {}", e);
@@ -18,7 +18,7 @@ pub fn enable_privileges() -> Result<()> {
     } else {
         debug!("Full Disk Access appears to be granted");
     }
-    
+
     Ok(())
 }
 
@@ -32,20 +32,22 @@ fn check_full_disk_access() -> Result<()> {
     // Try to access a protected file that requires Full Disk Access
     // For example, try to read a file in /Library/Application Support/com.apple.TCC
     let test_path = "/Library/Application Support/com.apple.TCC/TCC.db";
-    
+
     let output = Command::new("ls")
         .arg("-la")
         .arg(test_path)
         .output()
         .context("Failed to execute ls command")?;
-    
+
     if !output.status.success() {
-        return Err(anyhow::anyhow!("Cannot access TCC database, Full Disk Access may not be granted"));
+        return Err(anyhow::anyhow!(
+            "Cannot access TCC database, Full Disk Access may not be granted"
+        ));
     }
-    
+
     // If we can list the file, we likely have Full Disk Access
     debug!("Successfully accessed TCC database, Full Disk Access appears to be granted");
-    
+
     Ok(())
 }
 
@@ -55,8 +57,8 @@ fn request_tcc_permissions() -> Result<()> {
     // In a real implementation, this would use the TCC framework to request permissions
     // However, this requires app bundle entitlements and cannot be done at runtime
     // For a command-line tool, the user must grant Full Disk Access manually
-    
+
     warn!("To access protected files, grant Full Disk Access to this application in System Preferences > Security & Privacy > Privacy > Full Disk Access");
-    
+
     Ok(())
 }

@@ -1,9 +1,9 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use log::{error, warn};
-use rusoto_s3::{S3Client, S3, AbortMultipartUploadRequest};
+use rusoto_s3::{AbortMultipartUploadRequest, S3Client, S3};
 
 use crate::cloud::streaming::S3UploadStream;
 use crate::collectors::streaming::core;
@@ -41,22 +41,22 @@ pub async fn stream_artifacts_to_s3(
             return Err(e);
         }
     };
-    
+
     // Keep a clone of the client, bucket, and key for potential abort operations
     let client_for_abort = client.clone();
     let bucket_for_abort = bucket.to_string();
     let key_for_abort = key.to_string();
     let upload_id = s3_stream.upload_id.clone();
-    
+
     // Stream artifacts using the core implementation
     match core::stream_directory_to_target(source_dir, s3_stream, buffer_size_mb).await {
         Ok(_) => Ok(()),
         Err(e) => {
             error!("Failed to stream artifacts to S3: {}", e);
-            
+
             // Try to abort the upload to clean up
             warn!("Attempting to abort the failed upload...");
-            
+
             // Create abort request
             let abort_request = AbortMultipartUploadRequest {
                 bucket: bucket_for_abort,
@@ -64,14 +64,14 @@ pub async fn stream_artifacts_to_s3(
                 upload_id,
                 ..Default::default()
             };
-            
+
             // Attempt to abort the upload
             if let Err(abort_err) = client_for_abort.abort_multipart_upload(abort_request).await {
                 warn!("Failed to abort upload: {}", abort_err);
             } else {
                 warn!("Successfully aborted the failed upload");
             }
-            
+
             Err(anyhow!("Failed to stream artifacts to S3: {}", e))
         }
     }
@@ -107,22 +107,22 @@ pub async fn stream_file_to_s3(
             return Err(e);
         }
     };
-    
+
     // Keep a clone of the client, bucket, and key for potential abort operations
     let client_for_abort = client.clone();
     let bucket_for_abort = bucket.to_string();
     let key_for_abort = key.to_string();
     let upload_id = s3_stream.upload_id.clone();
-    
+
     // Stream file using the core implementation
     match core::stream_file_to_target(file_path, s3_stream, buffer_size_mb).await {
         Ok(_) => Ok(()),
         Err(e) => {
             error!("Failed to stream file to S3: {}", e);
-            
+
             // Try to abort the upload to clean up
             warn!("Attempting to abort the failed upload...");
-            
+
             // Create abort request
             let abort_request = AbortMultipartUploadRequest {
                 bucket: bucket_for_abort,
@@ -130,14 +130,14 @@ pub async fn stream_file_to_s3(
                 upload_id,
                 ..Default::default()
             };
-            
+
             // Attempt to abort the upload
             if let Err(abort_err) = client_for_abort.abort_multipart_upload(abort_request).await {
                 warn!("Failed to abort upload: {}", abort_err);
             } else {
                 warn!("Successfully aborted the failed upload");
             }
-            
+
             Err(anyhow!("Failed to stream file to S3: {}", e))
         }
     }
@@ -146,8 +146,8 @@ pub async fn stream_file_to_s3(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     #[test]
     fn test_module_documentation() {
@@ -182,9 +182,10 @@ mod tests {
             client,
             "test-bucket",
             "test-key",
-            5
-        ).await;
-        
+            5,
+        )
+        .await;
+
         // Should fail because we can't create real S3 upload in tests
         assert!(result.is_err());
     }
@@ -198,9 +199,10 @@ mod tests {
             client,
             "test-bucket",
             "test-key",
-            5
-        ).await;
-        
+            5,
+        )
+        .await;
+
         // Should fail because we can't create real S3 upload in tests
         assert!(result.is_err());
     }
