@@ -28,7 +28,7 @@ pub fn build_binary_with_config(
     };
     
     let target_triple = match target_os_normalized.as_str() {
-        "windows" => "x86_64-pc-windows-gnu",
+        "windows" => "x86_64-pc-windows-msvc",
         "linux" => "x86_64-unknown-linux-gnu", 
         "macos" => "x86_64-apple-darwin",
         _ => return Err(anyhow!("Unsupported target OS: {}", target_os_normalized)),

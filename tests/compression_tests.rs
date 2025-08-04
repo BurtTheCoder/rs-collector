@@ -10,8 +10,7 @@ use anyhow::Result;
 use zip::ZipArchive;
 
 use rust_collector::config::{
-    CollectionConfig, Artifact, ArtifactType, 
-    LinuxArtifactType, WindowsArtifactType, MacOSArtifactType
+    Artifact, ArtifactType
 };
 use rust_collector::collectors::collector::collect_artifacts;
 use rust_collector::utils::compress::create_zip_file;

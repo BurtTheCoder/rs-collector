@@ -28,14 +28,14 @@ fn embed_appropriate_config() -> Result<(), Box<dyn std::error::Error>> {
         _ => "generic"
     };
     
-    println!("cargo:warning=Preparing config for target OS: {}", target_os);
+    println!("cargo:warning=Preparing config for target OS: {target_os}");
     
     // Config directory (create if needed)
     let config_dir = Path::new("config");
     fs::create_dir_all(config_dir)?;
     
     // OS-specific config file path
-    let os_config_name = format!("default_{}_config.yaml", target_os);
+    let os_config_name = format!("default_{target_os}_config.yaml");
     let os_config_path = config_dir.join(&os_config_name);
     
     // Custom config source (from env var if provided)
@@ -62,7 +62,7 @@ fn embed_appropriate_config() -> Result<(), Box<dyn std::error::Error>> {
     // If OS-specific config doesn't exist yet, check if we have a template
     if !os_config_path.exists() {
         // Check for existing OS-specific config in the config directory
-        let template_path = config_dir.join(format!("default_{}_config.yaml", target_os));
+        let template_path = config_dir.join(format!("default_{target_os}_config.yaml"));
         if template_path.exists() {
             println!("cargo:warning=Using existing OS-specific config: {}", template_path.display());
             // No need to copy, it's already in the right place
@@ -78,6 +78,6 @@ fn embed_appropriate_config() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     
-    println!("cargo:warning=Config embedding completed for {}", target_os);
+    println!("cargo:warning=Config embedding completed for {target_os}");
     Ok(())
 }

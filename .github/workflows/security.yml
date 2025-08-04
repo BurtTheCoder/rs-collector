@@ -18,6 +18,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 jobs:
   security-audit:
@@ -27,11 +28,11 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo registry
-        uses: Swatinem/rust-cache@v2.7.5
+      - name: Setup Rust Environment
+        uses: ./.github/actions/setup-rust-env
+        with:
+          rust-version: stable
+          cache-key: '-security-audit'
 
       - name: Install cargo-audit
         run: cargo install cargo-audit
@@ -57,11 +58,11 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo registry
-        uses: Swatinem/rust-cache@v2.7.5
+      - name: Setup Rust Environment
+        uses: ./.github/actions/setup-rust-env
+        with:
+          rust-version: stable
+          cache-key: '-dependency-check'
 
       - name: Install cargo-deny
         run: cargo install cargo-deny
@@ -132,11 +133,11 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo registry
-        uses: Swatinem/rust-cache@v2.7.5
+      - name: Setup Rust Environment
+        uses: ./.github/actions/setup-rust-env
+        with:
+          rust-version: stable
+          cache-key: '-supply-chain'
 
       - name: Install cargo-vet
         run: cargo install cargo-vet
@@ -164,8 +165,11 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rust Environment
+        uses: ./.github/actions/setup-rust-env
+        with:
+          rust-version: stable
+          cache-key: '-sarif'
 
       - name: Install cargo-audit
         run: cargo install cargo-audit

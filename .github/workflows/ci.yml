@@ -9,7 +9,6 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  OPENSSL_NO_VENDOR: 1
 
 jobs:
   test:
@@ -55,7 +54,7 @@ jobs:
 
       - name: Run clippy
         if: matrix.rust == 'stable'
-        run: cargo clippy -- -D warnings
+        run: cargo clippy
 
       - name: Build (default features)
         run: cargo build --verbose

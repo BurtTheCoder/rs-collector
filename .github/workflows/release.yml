@@ -16,7 +16,6 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  OPENSSL_NO_VENDOR: 1
   
 jobs:
   create-release:

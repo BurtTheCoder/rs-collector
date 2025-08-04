@@ -4,13 +4,12 @@
 //! collection capabilities across different platforms.
 
 use std::fs;
-use std::path::Path;
 use tempfile::TempDir;
 use anyhow::Result;
 
 use rust_collector::config::{
     Artifact, ArtifactType,
-    VolatileDataType, WindowsArtifactType
+    VolatileDataType
 };
 use rust_collector::collectors::collector::collect_artifacts;
 
@@ -64,7 +63,7 @@ fn test_process_list_collection() -> Result<()> {
     let _ = collect_artifacts(&artifacts, output_dir.path());
     
     // Check if output file was created (might be empty in test env)
-    let process_file = output_dir.path().join("processes.json");
+    let _process_file = output_dir.path().join("processes.json");
     // File might not exist if volatile collection is not available
     
     Ok(())

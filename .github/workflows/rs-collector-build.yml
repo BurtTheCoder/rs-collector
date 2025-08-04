@@ -27,7 +27,6 @@ jobs:
             target: x86_64-unknown-linux-gnu
             features: ""
             feature_name: "standard"
-            dependencies: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
           
           - os: ubuntu
             runner: ubuntu-latest
@@ -36,7 +35,6 @@ jobs:
             target: x86_64-unknown-linux-gnu
             features: "memory_collection,linux_memory"
             feature_name: "memory"
-            dependencies: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
           
           - os: ubuntu
             runner: ubuntu-latest
@@ -45,8 +43,6 @@ jobs:
             target: x86_64-unknown-linux-gnu
             features: "memory_collection,linux_memory,yara"
             feature_name: "memory+yara"
-            dependencies: |
-              sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config libyara-dev
           
           # macOS builds
           - os: macos
@@ -56,7 +52,6 @@ jobs:
             target: x86_64-apple-darwin
             features: ""
             feature_name: "standard"
-            dependencies: brew install openssl pkg-config
           
           - os: macos
             runner: macos-latest
@@ -65,7 +60,6 @@ jobs:
             target: x86_64-apple-darwin
             features: "memory_collection,macos_memory"
             feature_name: "memory"
-            dependencies: brew install openssl pkg-config
           
           # Windows builds
           - os: windows
@@ -75,7 +69,6 @@ jobs:
             target: x86_64-pc-windows-msvc
             features: ""
             feature_name: "standard"
-            dependencies: ""
           
           - os: windows
             runner: windows-latest
@@ -98,26 +91,28 @@ jobs:
 
           # ==== ARM64 BUILDS ====
           
-          # Linux ARM64
+          # Linux ARM64 (GitHub-hosted runners may not be available)
           - os: ubuntu
-            runner: ubuntu-latest-arm64
+            runner: ubuntu-latest  # Fallback to regular runner for cross-compilation
             arch: arm64
             os_normalized: linux
             target: aarch64-unknown-linux-gnu
             features: ""
             feature_name: "standard"
-            dependencies: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
-            native: true
+            native: false  # Cross-compile instead
+            setup_cross: |
+              rustup target add aarch64-unknown-linux-gnu
           
           - os: ubuntu
-            runner: ubuntu-latest-arm64
+            runner: ubuntu-latest  # Fallback to regular runner for cross-compilation
             arch: arm64
             os_normalized: linux
             target: aarch64-unknown-linux-gnu
             features: "memory_collection,linux_memory"
             feature_name: "memory"
-            dependencies: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
-            native: true
+            native: false  # Cross-compile instead
+            setup_cross: |
+              rustup target add aarch64-unknown-linux-gnu
           
           # macOS ARM64 (Apple Silicon) 
           - os: macos
@@ -127,7 +122,6 @@ jobs:
             target: aarch64-apple-darwin
             features: ""
             feature_name: "standard"
-            dependencies: brew install openssl pkg-config
             native: true
           
           - os: macos
@@ -137,7 +131,6 @@ jobs:
             target: aarch64-apple-darwin
             features: "memory_collection,macos_memory"
             feature_name: "memory"
-            dependencies: brew install openssl pkg-config
             native: true
           
           # Windows ARM64 (cross-compiled)
@@ -148,7 +141,6 @@ jobs:
             target: aarch64-pc-windows-msvc
             features: ""
             feature_name: "standard"
-            dependencies: ""
             native: false
             setup_cross: |
               rustup target add aarch64-pc-windows-msvc
@@ -163,7 +155,6 @@ jobs:
             target: x86_64-unknown-linux-gnu
             features: "embed_config"
             feature_name: "embedded-config"
-            dependencies: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
             use_config_embedding: true
             artifact_name: rust_collector_linux
           
@@ -175,7 +166,6 @@ jobs:
             target: x86_64-apple-darwin
             features: "embed_config"
             feature_name: "embedded-config"
-            dependencies: brew install openssl pkg-config
             use_config_embedding: true
             artifact_name: rust_collector_macos
           
@@ -187,7 +177,6 @@ jobs:
             target: x86_64-pc-windows-msvc
             features: "embed_config"
             feature_name: "embedded-config"
-            dependencies: ""
             use_config_embedding: true
             artifact_name: rust_collector_windows.exe
           
@@ -199,8 +188,8 @@ jobs:
             arch: x86_64
             os_normalized: linux
             target: x86_64-unknown-linux-gnu
+            features: ""
             feature_name: "build-command"
-            dependencies: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
             use_build_command: true
             artifact_name: rust_collector_linux_cmd
           
@@ -210,8 +199,8 @@ jobs:
             arch: x86_64
             os_normalized: macos
             target: x86_64-apple-darwin
+            features: ""
             feature_name: "build-command"
-            dependencies: brew install openssl pkg-config
             use_build_command: true
             artifact_name: rust_collector_macos_cmd
           
@@ -221,29 +210,27 @@ jobs:
             arch: x86_64
             os_normalized: windows
             target: x86_64-pc-windows-msvc
+            features: ""
             feature_name: "build-command"
-            dependencies: ""
             use_build_command: true
             artifact_name: rust_collector_windows_cmd.exe
 
     steps:
     - uses: actions/checkout@v4
       
-    # Set up Rust toolchain
-    - name: Set up Rust
-      uses: dtolnay/rust-toolchain@stable
+    # Set up Rust environment with dependencies
+    - name: Setup Rust Environment
+      uses: ./.github/actions/setup-rust-env
       with:
+        rust-version: stable
         targets: ${{ matrix.target }}
-        components: rustfmt, clippy
+        install-yara: ${{ contains(matrix.features, 'yara') }}
+        cache-key: '-build-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.feature_name }}'
+    
     # Setup cross-compilation if needed
     - name: Set up cross-compilation
       if: matrix.setup_cross != '' && matrix.native != true
       run: ${{ matrix.setup_cross }}
-
-    # Install platform-specific dependencies
-    - name: Install dependencies
-      if: matrix.dependencies != ''
-      run: ${{ matrix.dependencies }}
 
     # Windows-specific setup for memory collection
     - name: Windows memory collection setup
@@ -251,18 +238,6 @@ jobs:
       shell: pwsh
       run: ${{ matrix.dependencies_script }}
 
-    # Cache dependencies for faster builds
-    - name: Cache dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.feature_name }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: |
-          ${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.feature_name }}-cargo-
-          ${{ matrix.os }}-${{ matrix.arch }}-cargo-
 
     # Prepare OS-specific config for embedded config builds
     - name: Prepare OS-specific config
@@ -319,6 +294,7 @@ jobs:
           target/${{ matrix.target }}/release/rust_collector*
           !target/${{ matrix.target }}/release/rust_collector.d
           !target/${{ matrix.target }}/release/rust_collector.pdb
+        if-no-files-found: warn
     
     # Upload artifacts for build command builds
     - name: Upload artifacts (build command)
@@ -327,6 +303,7 @@ jobs:
       with:
         name: rust_collector-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.feature_name }}
         path: ${{ matrix.artifact_name }}
+        if-no-files-found: warn
           
     # Optional: Create tagged release when tag is pushed
     - name: Create Release

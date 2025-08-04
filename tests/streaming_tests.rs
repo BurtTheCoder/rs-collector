@@ -77,7 +77,7 @@ async fn test_streaming_multiple_files() -> Result<()> {
     // Simulate streaming upload
     let bytes_uploaded = Arc::new(AtomicU64::new(0));
     
-    for (filename, size) in files {
+    for (_filename, size) in files {
         // Simulate streaming this file
         let chunks = size / 512; // 512 byte chunks
         for _ in 0..chunks {
@@ -116,7 +116,7 @@ async fn test_streaming_zip_creation() -> Result<()> {
         ("subdir/nested.txt", 11), // "Nested file"
     ];
     
-    for (path, size) in files {
+    for (_path, size) in files {
         // Add ZIP header overhead (simulated)
         bytes_written.fetch_add(30, Ordering::SeqCst); // File header
         bytes_written.fetch_add(size, Ordering::SeqCst); // File content

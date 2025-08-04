@@ -1,7 +1,6 @@
 use std::env;
 use std::fs;
 use std::path::PathBuf;
-use std::collections::HashMap;
 
 use anyhow::{Context, Result, anyhow};
 use log::{info, warn, LevelFilter};
@@ -373,17 +372,17 @@ fn handle_memory_operations(
     }
     
     // Handle memory search if requested
-    if let Some(pattern) = &args.memory_search {
+    if let Some(_pattern) = &args.memory_search {
         warn!("Memory pattern search is not yet implemented in the refactored code");
     }
     
     // Handle YARA scanning if requested
-    if let Some(rule) = &args.memory_yara {
+    if let Some(_rule) = &args.memory_yara {
         warn!("YARA memory scanning is not yet implemented in the refactored code");
     }
     
     // Handle specific memory region dump if requested
-    if let Some(spec) = &args.dump_memory_region {
+    if let Some(_spec) = &args.dump_memory_region {
         warn!("Memory region dump is not yet implemented in the refactored code");
     }
     
@@ -394,7 +393,7 @@ fn handle_memory_operations(
 fn collect_artifacts(
     artifact_dir: &PathBuf,
     artifacts_to_collect: &[Artifact],
-    config: &CollectionConfig
+    _config: &CollectionConfig
 ) -> Result<Vec<(String, ArtifactMetadata)>> {
     info!("Starting artifact collection...");
     

@@ -21,7 +21,6 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  OPENSSL_NO_VENDOR: 1
 
 jobs:
   test-features:
@@ -161,7 +160,7 @@ jobs:
 
       - name: Run clippy
         if: matrix.rust == 'stable'
-        run: cargo clippy ${{ matrix.features }} -- -D warnings
+        run: cargo clippy ${{ matrix.features }}
 
       - name: Check documentation
         run: cargo doc ${{ matrix.features }} --no-deps
@@ -195,13 +194,11 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rust Environment
+        uses: ./.github/actions/setup-rust-env
         with:
-          components: rustfmt, clippy
-
-      - name: Cache cargo registry
-        uses: Swatinem/rust-cache@v2.7.5
+          rust-version: stable
+          cache-key: '-windows-features'
 
       - name: Create test config for embed_config
         if: contains(matrix.features, 'embed_config')

@@ -50,6 +50,7 @@ runs:
         echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
         echo "OPENSSL_INCLUDE_DIR=/usr/include" >> $GITHUB_ENV
         echo "OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+        echo "OPENSSL_NO_VENDOR=1" >> $GITHUB_ENV
 
     - name: Install dependencies (macOS)
       if: runner.os == 'macOS'
@@ -62,12 +63,14 @@ runs:
         # Set OpenSSL environment variables for macOS
         echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
         echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig" >> $GITHUB_ENV
+        echo "OPENSSL_NO_VENDOR=1" >> $GITHUB_ENV
 
     - name: Install dependencies (Windows)
       if: runner.os == 'Windows'
       shell: bash
       run: |
-        echo "Windows dependency installation"
+        echo "Windows dependency installation - using vendored OpenSSL"
+        # On Windows, we use vendored OpenSSL (don't set OPENSSL_NO_VENDOR)
         # YARA installation on Windows is complex and often skipped
         if [[ "${{ inputs.install-yara }}" == "true" ]]; then
           echo "YARA installation on Windows is not automated in this action"
