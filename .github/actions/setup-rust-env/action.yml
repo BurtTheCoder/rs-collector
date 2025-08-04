@@ -1,0 +1,74 @@
+name: 'Setup Rust Environment'
+description: 'Common setup for Rust workflows including toolchain, dependencies, and caching'
+inputs:
+  rust-version:
+    description: 'Rust toolchain version (stable, beta, nightly, or specific version)'
+    required: false
+    default: 'stable'
+  targets:
+    description: 'Additional Rust targets to install'
+    required: false
+    default: ''
+  components:
+    description: 'Rust components to install'
+    required: false
+    default: 'rustfmt, clippy'
+  install-yara:
+    description: 'Whether to install YARA dependencies'
+    required: false
+    default: 'false'
+  cache-key:
+    description: 'Additional cache key suffix'
+    required: false
+    default: ''
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ inputs.rust-version }}
+        targets: ${{ inputs.targets }}
+        components: ${{ inputs.components }}
+
+    - name: Cache cargo registry
+      uses: Swatinem/rust-cache@v2.7.5
+      with:
+        key: ${{ runner.os }}-cargo-${{ inputs.rust-version }}${{ inputs.cache-key }}
+
+    - name: Install dependencies (Ubuntu)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libssl-dev pkg-config build-essential
+        if [[ "${{ inputs.install-yara }}" == "true" ]]; then
+          sudo apt-get install -y libyara-dev
+        fi
+        # Set OpenSSL environment variables
+        echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
+        echo "OPENSSL_INCLUDE_DIR=/usr/include" >> $GITHUB_ENV
+        echo "OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+
+    - name: Install dependencies (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        brew install openssl@3 pkg-config
+        if [[ "${{ inputs.install-yara }}" == "true" ]]; then
+          brew install yara
+        fi
+        # Set OpenSSL environment variables for macOS
+        echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
+        echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig" >> $GITHUB_ENV
+
+    - name: Install dependencies (Windows)
+      if: runner.os == 'Windows'
+      shell: bash
+      run: |
+        echo "Windows dependency installation"
+        # YARA installation on Windows is complex and often skipped
+        if [[ "${{ inputs.install-yara }}" == "true" ]]; then
+          echo "YARA installation on Windows is not automated in this action"
+        fi

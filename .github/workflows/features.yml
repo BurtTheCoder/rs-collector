@@ -122,52 +122,12 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
-      - name: Install Rust toolchain (stable)
-        if: matrix.rust == 'stable'
-        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rust Environment
+        uses: ./.github/actions/setup-rust-env
         with:
-          components: rustfmt, clippy
-
-      - name: Install Rust toolchain (beta)
-        if: matrix.rust == 'beta'
-        uses: dtolnay/rust-toolchain@beta
-        with:
-          components: rustfmt, clippy
-
-      - name: Install Rust toolchain (nightly)
-        if: matrix.rust == 'nightly'
-        uses: dtolnay/rust-toolchain@nightly
-        with:
-          components: rustfmt, clippy
-
-      - name: Cache cargo registry
-        uses: Swatinem/rust-cache@v2.7.5
-        with:
-          key: ${{ runner.os }}-cargo-features-${{ matrix.rust }}
-
-      - name: Install dependencies (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libssl-dev pkg-config build-essential
-          if [[ "${{ matrix.install-yara }}" == "true" ]]; then
-            sudo apt-get install -y libyara-dev
-          fi
-          # Set OpenSSL environment variables
-          echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
-          echo "OPENSSL_INCLUDE_DIR=/usr/include" >> $GITHUB_ENV
-          echo "OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
-
-      - name: Install dependencies (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          brew install openssl@3 pkg-config
-          if [[ "${{ matrix.install-yara }}" == "true" ]]; then
-            brew install yara
-          fi
-          # Set OpenSSL environment variables for macOS
-          echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig" >> $GITHUB_ENV
+          rust-version: ${{ matrix.rust }}
+          install-yara: ${{ matrix.install-yara }}
+          cache-key: '-features'
 
       - name: Create test config for embed_config
         if: contains(matrix.features, 'embed_config')
