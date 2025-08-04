@@ -1,6 +1,7 @@
 use anyhow::Result;
 use tokio::io::AsyncWrite;
 
+#[allow(async_fn_in_trait)]
 /// A trait for streaming targets that can receive data and complete or abort uploads.
 ///
 /// This trait abstracts over different streaming destinations like S3, SFTP, etc.,

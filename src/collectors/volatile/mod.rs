@@ -35,6 +35,6 @@ pub async fn collect_volatile_data() -> Result<models::VolatileData> {
 
 /// Collect process information
 pub async fn collect_processes() -> Result<Vec<models::ProcessInfo>> {
-    let mut collector = VolatileDataCollector::new();
+    let collector = VolatileDataCollector::new();
     collector.collect_processes()
 }

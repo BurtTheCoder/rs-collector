@@ -6,7 +6,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use log::{info, warn};
+use log::warn;
 
 /// Tracks artifacts that failed due to permission errors
 #[derive(Debug, Clone, Default)]

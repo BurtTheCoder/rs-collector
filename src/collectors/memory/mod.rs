@@ -27,7 +27,9 @@ pub mod collector;
 pub mod memprocfs;
 
 use anyhow::Result;
-use log::{info, warn};
+#[cfg(feature = "memory_collection")]
+use log::info;
+use log::warn;
 use std::path::Path;
 
 use crate::collectors::volatile::models::ProcessInfo;

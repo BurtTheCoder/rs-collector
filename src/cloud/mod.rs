@@ -41,24 +41,23 @@
 //! ### S3 Upload
 //!
 //! ```no_run
-//! use rust_collector::cloud::s3::{S3Config, create_s3_client};
+//! use rust_collector::cloud::s3::UploadQueue;
 //! use rust_collector::cloud::streaming::S3UploadStream;
+//! use rusoto_core::Region;
+//! use rusoto_s3::S3Client;
+//! use std::sync::Arc;
 //!
 //! # async fn example() -> anyhow::Result<()> {
-//! let config = S3Config {
-//!     bucket: "forensics-bucket".to_string(),
-//!     region: "us-east-1".to_string(),
-//!     access_key_id: "KEY".to_string(),
-//!     secret_access_key: "SECRET".to_string(),
-//!     buffer_size_mb: 5,
-//! };
-//!
-//! let client = create_s3_client(&config)?;
+//! // Create S3 client
+//! let region = Region::UsEast1;
+//! let client = Arc::new(S3Client::new(region.clone()));
+//! 
+//! // Create upload stream
 //! let upload_stream = S3UploadStream::new(
 //!     client,
-//!     &config.bucket,
+//!     "forensics-bucket",
 //!     "collection-2024.zip",
-//!     config.buffer_size_mb
+//!     5  // buffer_size_mb
 //! ).await?;
 //! # Ok(())
 //! # }
@@ -78,9 +77,11 @@
 //!     port: 22,
 //!     username: "investigator".to_string(),
 //!     private_key_path: PathBuf::from("/home/user/.ssh/id_rsa"),
-//!     remote_base_path: "/forensics/case123/".to_string(),
+//!     remote_path: "/forensics/case123/".to_string(),
 //!     connection_timeout_sec: 30,
 //!     concurrent_connections: 4,
+//!     buffer_size_mb: 8,
+//!     max_retries: 3,
 //! };
 //!
 //! upload_to_sftp(local_path, config).await?;
