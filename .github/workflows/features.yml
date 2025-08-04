@@ -144,16 +144,22 @@ jobs:
         with:
           key: ${{ runner.os }}-cargo-features-${{ matrix.rust }}
 
-      - name: Install YARA (Ubuntu)
-        if: matrix.install-yara && matrix.os == 'ubuntu-latest'
+      - name: Install dependencies (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libyara-dev
+          sudo apt-get install -y libssl-dev pkg-config
+          if [[ "${{ matrix.install-yara }}" == "true" ]]; then
+            sudo apt-get install -y libyara-dev
+          fi
 
-      - name: Install YARA (macOS)
-        if: matrix.install-yara && matrix.os == 'macos-latest'
+      - name: Install dependencies (macOS)
+        if: matrix.os == 'macos-latest'
         run: |
-          brew install yara
+          brew install openssl pkg-config
+          if [[ "${{ matrix.install-yara }}" == "true" ]]; then
+            brew install yara
+          fi
 
       - name: Create test config for embed_config
         if: contains(matrix.features, 'embed_config')
