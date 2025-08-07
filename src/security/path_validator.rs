@@ -188,14 +188,20 @@ pub fn validate_output_path(path: &Path) -> Result<()> {
 
     for dangerous in dangerous_paths {
         if path_str.starts_with(dangerous) {
-            return Err(anyhow!("Cannot write to system directory: {}", path.display()));
+            return Err(anyhow!(
+                "Cannot write to system directory: {}",
+                path.display()
+            ));
         }
     }
 
     // Check if parent directory exists and is writable
     if let Some(parent) = path.parent() {
         if parent.exists() && parent.metadata()?.permissions().readonly() {
-            return Err(anyhow!("Parent directory is read-only: {}", parent.display()));
+            return Err(anyhow!(
+                "Parent directory is read-only: {}",
+                parent.display()
+            ));
         }
     }
 

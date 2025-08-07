@@ -3,11 +3,11 @@
 //! This module provides a cross-platform implementation for memory collection
 //! using the MemProcFS library.
 
+#[cfg(not(feature = "memory_collection"))]
+use anyhow::bail;
 use anyhow::Result;
 #[cfg(feature = "memory_collection")]
 use anyhow::{anyhow, Context};
-#[cfg(not(feature = "memory_collection"))]
-use anyhow::bail;
 #[cfg(feature = "memory_collection")]
 use log::{debug, warn};
 #[cfg(feature = "memory_collection")]

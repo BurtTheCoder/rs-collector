@@ -92,6 +92,17 @@
 //! All unsafe code is documented with safety invariants and is contained
 //! within platform-specific modules.
 
+#![allow(
+    clippy::uninlined_format_args,
+    clippy::needless_borrow,
+    clippy::ptr_arg,
+    clippy::new_without_default,
+    clippy::upper_case_acronyms,
+    clippy::match_like_matches_macro,
+    clippy::unnecessary_lazy_evaluations,
+    clippy::unwrap_or_default
+)]
+
 /// Command-line interface definitions and argument parsing
 pub mod cli;
 

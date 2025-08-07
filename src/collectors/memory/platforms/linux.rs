@@ -35,10 +35,17 @@ impl LinuxMemoryCollector {
                 return Err(anyhow!("Permission denied when accessing process memory for pid {}. Run as root or adjust ptrace_scope.", pid));
             }
             Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                return Err(anyhow!("Process {} no longer exists or is not accessible", pid));
+                return Err(anyhow!(
+                    "Process {} no longer exists or is not accessible",
+                    pid
+                ));
             }
             Err(e) => {
-                return Err(anyhow!("Failed to open memory file for process {}: {}", pid, e));
+                return Err(anyhow!(
+                    "Failed to open memory file for process {}: {}",
+                    pid,
+                    e
+                ));
             }
         };
 

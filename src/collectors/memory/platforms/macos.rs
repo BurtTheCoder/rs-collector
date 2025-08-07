@@ -257,7 +257,11 @@ impl MemoryCollectorImpl for MacOSMemoryCollector {
             };
 
             if kr != KERN_SUCCESS {
-                return Err(anyhow!("Failed to get dyld info for process {}: {}", pid, kr));
+                return Err(anyhow!(
+                    "Failed to get dyld info for process {}: {}",
+                    pid,
+                    kr
+                ));
             }
 
             // Read the all_image_infos structure
@@ -275,7 +279,11 @@ impl MemoryCollectorImpl for MacOSMemoryCollector {
             };
 
             if kr != KERN_SUCCESS {
-                return Err(anyhow!("Failed to read all_image_infos for process {}: {}", pid, kr));
+                return Err(anyhow!(
+                    "Failed to read all_image_infos for process {}: {}",
+                    pid,
+                    kr
+                ));
             }
 
             // Read the image_info array
@@ -294,7 +302,11 @@ impl MemoryCollectorImpl for MacOSMemoryCollector {
             };
 
             if kr != KERN_SUCCESS {
-                return Err(anyhow!("Failed to read image array for process {}: {}", pid, kr));
+                return Err(anyhow!(
+                    "Failed to read image array for process {}: {}",
+                    pid,
+                    kr
+                ));
             }
 
             // Convert bytes to array of dyld_image_info
@@ -381,7 +393,11 @@ impl MacOSMemoryCollector {
         let kr = unsafe { task_for_pid(mach_task_self(), pid as i32, &mut task) };
 
         if kr != KERN_SUCCESS {
-            return Err(anyhow!("Failed to get task port for process {}: {}", pid, kr));
+            return Err(anyhow!(
+                "Failed to get task port for process {}: {}",
+                pid,
+                kr
+            ));
         }
 
         // Cache the task port
