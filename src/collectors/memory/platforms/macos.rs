@@ -3,7 +3,7 @@
 //! This module provides macOS-specific implementation for memory collection
 //! using the task_for_pid and mach APIs.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use log::{debug, error, info, warn};
 use std::collections::HashMap;
 use std::ffi::CStr;

@@ -4,7 +4,7 @@
 //! to ensure they remain within expected boundaries and don't allow
 //! access to unauthorized locations.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use std::path::{Path, PathBuf};
 
 /// Validates that a path is safe and doesn't contain directory traversal attempts.

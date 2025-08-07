@@ -187,6 +187,8 @@ personal_*.sh
 VERIFICATION_*.md
 docs/LEARNINGS.md
 
+.crush/
+
 # Temporary commit summaries
 GIT_COMMIT_SUMMARY.md
 ISSUE_MEMORY_DEPS.md

@@ -3,7 +3,7 @@
 //! This module provides Linux-specific implementation for memory collection
 //! using the /proc filesystem.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, Context, Result};
 use log::{debug, info, warn};
 use std::collections::HashMap;
 use std::fs::{self, File};
